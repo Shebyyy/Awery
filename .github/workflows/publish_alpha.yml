@@ -3,7 +3,7 @@ name: Publish Alpha
 on:
   push:
     branches:
-      - Test
+      - master
     paths-ignore:
       - "docs/**"
       - "README.md"
@@ -29,59 +29,34 @@ jobs:
 
       - name: Get Commits Since Last Run
         run: |
-          LAST_SHA=$(cat last_sha.txt 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          if [ -f last_sha.txt ]; then
+            LAST_SHA=$(cat last_sha.txt)
+          else
+            LAST_SHA=$(git rev-list --max-parents=0 HEAD)
+          fi
           echo "Commits since $LAST_SHA:"
-          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/mrboomdeveloper/awery/commit/%H)")
-          FORMATTED_COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/mrboomdeveloper\/awery\/pull\/\1)/g' | awk '{printf "%s\\n", $0}')
+          COMMIT_LOGS=$(git log $LAST_SHA..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/mrboomdeveloper/awery/commit/%H)")
+          COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/mrboomdeveloper\/awery\/pull\/\1)/g')
+          FORMATTED_COMMIT_LOGS=$(echo "$COMMIT_LOGS" | awk '{printf "%s\\n", $0}')
           FORMATTED_COMMIT_LOGS="${FORMATTED_COMMIT_LOGS//'%'/'%25'}"
           FORMATTED_COMMIT_LOGS="${FORMATTED_COMMIT_LOGS//$'\n'/'%0A'}"
           FORMATTED_COMMIT_LOGS="${FORMATTED_COMMIT_LOGS//$'\r'/'%0D'}"
           echo "COMMIT_LOG=${FORMATTED_COMMIT_LOGS}" >> $GITHUB_ENV
           echo "$FORMATTED_COMMIT_LOGS" > commit_log.txt
-          echo "${GITHUB_REF##*/}" > branch.txt
-          echo "$GITHUB_SHA" > last_sha.txt
+          BRANCH=${{ github.ref }}
+          BRANCH=${BRANCH#refs/heads/}
+          echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
+          echo $GITHUB_SHA > last_sha.txt
+        shell: bash
+        env:
+          CI: true
+        continue-on-error: true
 
       - name: Build Alpha APK
         run: ./gradlew assembleAlphaRelease
 
       - name: Build Beta APK
         run: ./gradlew assembleBetaRelease
-
-      - name: Build Production APK
-        run: ./gradlew assembleProdRelease
-
-      - name: Sign Alpha APK
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: "app/build/outputs/apk/alpha/release"
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Sign Beta APK
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: "app/build/outputs/apk/beta/release"
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Sign Production APK
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: "app/build/outputs/apk/prod/release"
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Upload Beta APK
         uses: actions/upload-artifact@v4
@@ -107,8 +82,13 @@ jobs:
       - name: Send Alpha APK to Telegram
         if: always()
         run: |
-          COMMIT_LOG=$(cat commit_log.txt | sed 's/%0A/\n/g')
-          telegram_commit_messages="<blockquote>${COMMIT_LOG}</blockquote>"
+          COMMIT_LOG=$(cat commit_log.txt)
+          telegram_commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
+            message=$(echo "$line" | sed -E 's/● (.*) ~(.*) ֍(.*)/● \1 ~\2 <a href="\3">֍<\/a>/')
+            message=$(echo "$message" | sed -E 's/#([0-9]+) (https:\/\/github.com\/mrboomdeveloper\/awery\/pull\/\1)/<a href="\2">#\1<\/a>/g')
+            echo "$message"
+          done)
+          telegram_commit_messages="<blockquote>${telegram_commit_messages}</blockquote>"
           curl -sS -f -X POST \
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
             -F "chat_id=-1002066701332" \
@@ -122,8 +102,9 @@ jobs:
         run: |
           commit_id=$(echo "${{ github.sha }}" | cut -c1-7)
           author_name=$(git log -1 --pretty=format:'%an')
-          author_link="https://github.com/$author_name"
-          commit_link="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          author_email=$(git log -1 --pretty=format:'%ae')
+          author_link="<https://github.com/$author_name>"
+          commit_link="<https://github.com/${{ github.repository }}/commit/${{ github.sha }}>"
           commit_message=$(cat commit_log.txt | sed 's/%0A/\n/g')
           payload=$(jq -nc --arg content "<@&1208839371575529572> 
           **Commit:** [${commit_id}](${commit_link}) by [${author_name}](${author_link}) 
