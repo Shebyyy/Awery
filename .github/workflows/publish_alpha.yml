@@ -42,7 +42,6 @@ jobs:
       - name: Get New Commits Since Last Successful Run
         id: get_commits
         run: |
-          echo "Retrieving commits since last successful SHA: ${{ env.LAST_SHA }}"
           COMMIT_LOGS=$(git log ${{ env.LAST_SHA }}..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/${{ github.repository }}/commit/%H)" --max-count=10)
           FORMATTED_COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's|#([0-9]+)|[#\1](https://github.com/${{ github.repository }}/pull/\1)|g')
           if [ ${#FORMATTED_COMMIT_LOGS} -gt 4096 ]; then
@@ -54,7 +53,7 @@ jobs:
 
       - name: Build Alpha APK
         id: build_alpha
-        run: ./gradlew assembleAlphaRelease
+        run: ./gradlew assembleAlphaRelease || { echo 'Build failed'; exit 1; }
 
       - name: Sign Alpha APK
         if: success()
@@ -63,7 +62,7 @@ jobs:
           releaseDirectory: "app/build/outputs/apk/alpha/release"
           signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
           alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROIDKEYSTORE_PASSWORD }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
