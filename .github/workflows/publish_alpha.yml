@@ -1,9 +1,9 @@
-name: Build & Publish Alpha APK
+name: Build & Publish Alpha APK 
 
 on:
   push:
     branches:
-      - master
+      - Test
     paths-ignore:
       - "docs/**"
       - "README.md"
@@ -39,15 +39,20 @@ jobs:
       - name: Retrieve Last Successful Commit SHA
         id: last_successful_sha
         run: |
-          LAST_SHA=$(cat last_successful_sha.txt || git rev-list --max-parents=0 HEAD)
+          if [ -f last_successful_sha.txt ]; then
+            LAST_SHA=$(cat last_successful_sha.txt)
+          else
+            LAST_SHA=$(git rev-list --max-parents=0 HEAD)
+            echo "$LAST_SHA" > last_successful_sha.txt
+          fi
           echo "LAST_SHA=${LAST_SHA}" >> $GITHUB_ENV
 
-      - name: Get Commits Since Last Run
+      - name: Get New Commits Since Last Successful Run
         id: get_commits
         run: |
           LAST_SHA=$(cat last_successful_sha.txt || git rev-list --max-parents=0 HEAD)
-          COMMIT_LOGS=$(git log $LAST_SHA..HEAD --pretty=format:"● %s ~%an ֍ (https://github.com/${{ github.repository }}/commit/%H)")
-          FORMATTED_COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's|#([0-9]+)|[\\#\1](https://github.com/${{ github.repository }}/pull/\1)|g')
+          COMMIT_LOGS=$(git log $LAST_SHA..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/${{ github.repository }}/commit/%H)")
+          FORMATTED_COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's|Merge pull request #([0-9]+) from ([^ ]+)|Merge pull request <a href="https://github.com/${{ github.repository }}/pull/\1">#\1</a> from \2|g')
           echo "$FORMATTED_COMMIT_LOGS" > commit_log.txt
 
       - name: Build Alpha APK
@@ -90,11 +95,14 @@ jobs:
           COMMIT_LOG=$(cat commit_log.txt)
           TRUNCATED_COMMIT_LOG="${COMMIT_LOG:0:900}"
           telegram_commit_messages=$(echo "$TRUNCATED_COMMIT_LOG" | sed 's/%0A/\n/g' | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
+          while [ ${#telegram_commit_messages} -gt 900 ]; do
+            telegram_commit_messages=$(echo "$telegram_commit_messages" | sed 's/^[^●]*● //')
+          done
           formatted_messages="<blockquote>${telegram_commit_messages}</blockquote>"
           curl -v -X POST \
           "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-          -F "chat_id=-1002206819738" \
-          -F "message_thread_id=174" \
+          -F "chat_id=-1002066701332" \
+          -F "message_thread_id=737" \
           -F "document=@$APK_PATH" \
           -F "caption=New Alpha-Build dropped 🔥
           Commits:$formatted_messages" \
@@ -103,23 +111,34 @@ jobs:
       - name: Send Alpha APK to Discord
         if: success()
         run: |
-         COMMIT_LOG=$(cat commit_log.txt)
-         ESCAPED_COMMIT_LOG=$(echo "$COMMIT_LOG" | sed ':a;N;$!ba;s/\n/\\n/g')
-         payload="{
-          \"content\": \"<@&1208839371575529572>\",
-          \"embeds\": [{
-          \"title\": \"New Awery Alpha Update!\",
-          \"description\": \"Commits:\\n${ESCAPED_COMMIT_LOG}\",
-          \"color\": 5814783
-          }]
+          COMMIT_LOG=$(cat commit_log.txt)
+          ESCAPED_COMMIT_LOG=$(echo "$COMMIT_LOG" | sed ':a;N;$!ba;s/\n/\\n/g')
+          payload="{
+            \"content\": \"<@&1208839371575529572>\",
+            \"embeds\": [{
+              \"title\": \"New Awery Alpha Update!\",
+              \"description\": \"Commits:\\n${ESCAPED_COMMIT_LOG}\",
+              \"color\": 5814783
+            }]
           }"
-          echo "$payload"
-            curl -H "Content-Type: application/json" \
-            -d "$payload" \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+          while [ ${#payload} -gt 2000 ]; do
+            COMMIT_LOG=$(echo "$COMMIT_LOG" | sed '$d') 
+            ESCAPED_COMMIT_LOG=$(echo "$COMMIT_LOG" | sed ':a;N;$!ba;s/\n/\\n/g') 
+            payload="{
+              \"content\": \"<@&1208839371575529572>\",
+              \"embeds\": [{
+                \"title\": \"New Awery Alpha Update!\",
+                \"description\": \"Commits:\\n${ESCAPED_COMMIT_LOG}\",
+                \"color\": 5814783
+              }]
+            }"
+          done
+          curl -H "Content-Type: application/json" \
+          -d "$payload" \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
           curl -H "Content-Type: multipart/form-data" \
-            -F "file1=@app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk" \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
+          -F "file1=@app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk" \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Save Last Successful Commit SHA
         if: success()
