@@ -157,7 +157,7 @@ jobs:
           payload="{
             \"content\": \"<@&1208839371575529572>\",
             \"embeds\": [{
-              \"title\": \"New Awery Alpha Update!\",
+              \"title\": \"New Awery Alpha Update 🔥\",
               \"description\": \"Commits:\\n${ESCAPED_COMMIT_LOG}\",
               \"color\": 5814783
             }]
