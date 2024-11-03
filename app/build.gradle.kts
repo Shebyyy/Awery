@@ -110,8 +110,8 @@ android {
         register("alpha") {
             isDefault = true
             dimension = "type"
-            versionNameSuffix = "-alpha"
-            applicationIdSuffix = ".alpha"
+            versionNameSuffix = "-alphas"
+            applicationIdSuffix = ".alphas"
 
             buildConfigField("${packageName}.app.update.UpdatesChannel", "CHANNEL", "${packageName}.app.update.UpdatesChannel.ALPHA")
             buildConfigField("String", "FILE_PROVIDER", "\"${packageName}.alpha.FileProvider\"")
