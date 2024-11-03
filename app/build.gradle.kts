@@ -118,7 +118,7 @@ android {
             buildConfigField("String", "UPDATES_REPOSITORY", "\"itsmechinmoy/awery-updater\"")
 
             manifestPlaceholders["fileProvider"] = "${packageName}.alpha.FileProvider"
-            manifestPlaceholders["appLabel"] = "Awery Alpha"
+            manifestPlaceholders["appLabel"] = "Aweryx Alpha"
         }
 
         register("beta") {
