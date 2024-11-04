@@ -67,7 +67,8 @@ jobs:
           - **[Discord](https://discord.com/invite/yspVzD4Kbm)**: Join our community to discuss ideas and stay updated.  
           - **[Telegram](https://t.me/mrboomdev_awery)**: Connect with us directly for real-time updates.
 
-          We appreciate your suggestion and look forward to potentially implementing it!          `;
+          We appreciate your suggestion and look forward to potentially implementing it!          
+          `;
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
