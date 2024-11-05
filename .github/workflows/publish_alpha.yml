@@ -1,4 +1,4 @@
-name: Build & Publish Alpha APK
+name: Build & Publish Alpha APK 
 
 on:
   push:
