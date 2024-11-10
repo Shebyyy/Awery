@@ -43,17 +43,28 @@ jobs:
           else
           LAST_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
-
           echo "Commits since $LAST_SHA:"
-          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10)
-          COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/MrBoomDeveloper\/Awery\/pull\/\1)/g')
-          COMMIT_LOGS="${COMMIT_LOGS//'%'/'%25'}"
-          COMMIT_LOGS="${COMMIT_LOGS//$'\n'/'%0A'}"
-          COMMIT_LOGS="${COMMIT_LOGS//$'\r'/'%0D'}"
-
-          echo "COMMIT_LOG=${COMMIT_LOGS}" >> $GITHUB_ENV
-          echo "$COMMIT_LOGS" > commit_log.txt
-
+          COMMITS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10)
+          MAX_LENGTH=1000
+          PROCESSED_COMMITS=""
+          CURRENT_LENGTH=0
+          while IFS= read -r commit; do
+            COMMIT_LENGTH=${#commit}
+            if [ $((CURRENT_LENGTH + COMMIT_LENGTH + 1)) -le $MAX_LENGTH ]; then
+              if [ -n "$PROCESSED_COMMITS" ]; then
+                PROCESSED_COMMITS="${PROCESSED_COMMITS}%0A${commit}"
+                CURRENT_LENGTH=$((CURRENT_LENGTH + COMMIT_LENGTH + 2))
+              else
+                PROCESSED_COMMITS="${commit}"
+                CURRENT_LENGTH=$COMMIT_LENGTH
+              fi
+            else
+              break
+            fi
+          done <<< "$COMMITS"
+          PROCESSED_COMMITS=$(echo "$PROCESSED_COMMITS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/MrBoomDeveloper\/Awery\/pull\/\1)/g')
+          echo "COMMIT_LOG=${PROCESSED_COMMITS}" >> $GITHUB_ENV
+          echo "$PROCESSED_COMMITS" > commit_log.txt
           BRANCH=${{ github.ref }}
           BRANCH=${BRANCH#refs/heads/}
           echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
@@ -289,8 +300,8 @@ jobs:
           if [ "$SKIP_BUILD" != "true" ]; then
             response=$(curl -sS -f -X POST \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-              -F "chat_id=-1002206819738" \
-              -F "message_thread_id=174" \
+              -F "chat_id=-1002066701332" \
+              -F "message_thread_id=28" \
               -F "document=@app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk" \
               -F "caption=New Alpha-Build dropped 🔥
               Commits:
