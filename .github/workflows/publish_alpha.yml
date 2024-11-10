@@ -3,7 +3,7 @@ name: Build & Publish Alpha APK
 on:
   push:
     branches:
-      - master
+      - Test
     paths-ignore:
       - "docs/**"
       - "README.md"
@@ -271,7 +271,12 @@ jobs:
             echo "Skipping APK upload to Discord due to SKIP_BUILD being set to true"
           fi
 
-          telegram_commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
+          COMMIT_LOG=$(cat commit_log.txt)
+          if [ ${#COMMIT_LOG} -gt 1024 ]; then
+            COMMIT_LOG="${COMMIT_LOG:0:900}... (truncated)"
+          fi
+          TRUNCATED_COMMIT_LOG="$COMMIT_LOG"
+          telegram_commit_messages=$(echo "$TRUNCATED_COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
             message=$(echo "$line" | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
             message=$(echo "$message" | sed -E 's/\[#([0-9]+)\]\((https:\/\/github\.com\/[^)]+)\)/<a href="\2">#\1<\/a>/g')
             echo "$message"
@@ -289,8 +294,8 @@ jobs:
           if [ "$SKIP_BUILD" != "true" ]; then
             response=$(curl -sS -f -X POST \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-              -F "chat_id=-1002206819738" \
-              -F "message_thread_id=174" \
+              -F "chat_id=-1002066701332" \
+              -F "message_thread_id=737" \
               -F "document=@app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk" \
               -F "caption=New Alpha-Build dropped 🔥
               Commits:
