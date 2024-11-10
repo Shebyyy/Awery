@@ -1,5 +1,4 @@
 name: Build & Publish Alpha APK
-
 on:
   push:
     branches:
