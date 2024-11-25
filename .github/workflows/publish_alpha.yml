@@ -45,7 +45,7 @@ jobs:
           fi
 
           echo "Commits since $LAST_SHA:"
-          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10 --invert-grep --author="dependabot[bot]")
+          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10)
           COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/MrBoomDeveloper\/Awery\/pull\/\1)/g')
           COMMIT_LOGS="${COMMIT_LOGS//'%'/'%25'}"
           COMMIT_LOGS="${COMMIT_LOGS//$'\n'/'%0A'}"
