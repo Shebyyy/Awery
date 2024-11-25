@@ -43,17 +43,14 @@ jobs:
           else
           LAST_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
-
           echo "Commits since $LAST_SHA:"
           COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10)
           COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/MrBoomDeveloper\/Awery\/pull\/\1)/g')
           COMMIT_LOGS="${COMMIT_LOGS//'%'/'%25'}"
           COMMIT_LOGS="${COMMIT_LOGS//$'\n'/'%0A'}"
           COMMIT_LOGS="${COMMIT_LOGS//$'\r'/'%0D'}"
-
           echo "COMMIT_LOG=${COMMIT_LOGS}" >> $GITHUB_ENV
           echo "$COMMIT_LOGS" > commit_log.txt
-
           BRANCH=${{ github.ref }}
           BRANCH=${BRANCH#refs/heads/}
           echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
@@ -69,7 +66,6 @@ jobs:
           VERSION="$VER+${SHA:0:7}"
           echo "Version $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
       - name: Setup JDK 17
         if: ${{ env.SKIP_BUILD != 'true' }}
         uses: actions/setup-java@v4
@@ -82,12 +78,11 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Alpha APK
-        if: false
         id: build_alpha
         run: ./gradlew assembleAlphaRelease
 
       - name: Sign Alpha APK
-        if: false
+        if: success()
         uses: r0adkll/sign-android-release@v1
         with:
           releaseDirectory: app/build/outputs/apk/alpha/release
@@ -101,15 +96,14 @@ jobs:
       - name: Rename APK File
         if: false
         run: |
-          mv app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk app/build/outputs/apk/alpha/release/Awery_Alpha.apk
+          mv app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk app/build/outputs/apk/alpha/release/Awery-Alpha.apk
           
       - name: Upload Alpha APK
-        if: false
         uses: actions/upload-artifact@v4
         with:
           name: "Alpha APK"
           retention-days: 90
-          path: "app/build/outputs/apk/alpha/release/Awery_Alpha.apk"
+          path: "app/build/outputs/apk/alpha/release/awery-alpha.apk"
           
       - name: Upload APK to Discord and Telegram
         shell: bash
@@ -127,13 +121,11 @@ jobs:
           additional_info["Sheby"]="\n Discord: <@612532963938271232>\n AniList: [Sheby](<https://anilist.co/user/5724017/>)"
           additional_info["itsmechinmoy"]="\n Discord: <@523539866311720963>\n AniList: [itsmechinmoy](<https://anilist.co/user/6110204/>)"
           additional_info["MrBoomDev"]="\n Discord: <@1034891767822176357>"
-
           declare -A contributor_colors
           default_color="6121629"
           contributor_colors["Sheby"]="#ff9b46"
           contributor_colors["itsmechinmoy"]="#5d689d"
           contributor_colors["MrBoomDev"]="#ff7e95"
-
           hex_to_decimal() { printf '%d' "0x${1#"#"}"; }
         
           declare -A recent_commit_counts
@@ -156,7 +148,7 @@ jobs:
           echo "$count|$login"
           done | sort -rn | cut -d'|' -f2)
         
-               developers=""
+          developers=""
           committers_count=0
           max_commits=0
           top_contributor=""
@@ -201,7 +193,6 @@ jobs:
               developer_entry="◗ **${name}** ${extra_info}
           - Github: [${login}](https://github.com/${login})
           - Commits: ${branch_commit_count}"
-
             if [ -n "$developers" ]; then
               developers="${developers}
           ${developer_entry}"
@@ -227,7 +218,6 @@ jobs:
           if [ ${#commit_messages} -gt $max_length ]; then
             commit_messages="${commit_messages:0:$max_length}"
           fi
-
           discord_data=$(jq -nc \
                         --arg field_value "$commit_messages" \
                         --arg author_value "$developers" \
@@ -274,7 +264,7 @@ jobs:
         
             if [ "$SKIP_BUILD" != "true" ]; then
             curl -F "payload_json=${contentbody}" \
-                 -F "Awery_debug=@app/build/outputs/apk/alpha/release/Awery_Alpha.apk" \
+                 -F "Awery_debug=@app/build/outputs/apk/alpha/release/awery-alpha.apk" \
                  ${{ secrets.DISCORD_WEBHOOK_URL }}
             else
             echo "Skipping APK upload to Discord due to SKIP_BUILD being set to true"
@@ -290,7 +280,6 @@ jobs:
             echo "$message"
           done)
           telegram_commit_messages="<blockquote>${telegram_commit_messages}</blockquote>"
-
           echo "$developers" > dev_info.txt
           echo "$developers"
           chmod +x workflowscripts/tel_parser.sed
@@ -299,13 +288,12 @@ jobs:
         
           telegram_dev_info="<blockquote>${dev_info_tel}</blockquote>"
           echo "$telegram_dev_info"
-
           if [ "$SKIP_BUILD" != "true" ]; then
-          APK_PATH="app/build/outputs/apk/alpha/release/Awery_Alpha.apk"
+          APK_PATH="app/build/outputs/apk/alpha/release/awery-alpha.apk"
           response=$(curl -sS -f -X POST \
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-            -F "chat_id=-1002066701332" \
-            -F "message_thread_id=737" \
+            -F "chat_id=-1002206819738" \
+            -F "message_thread_id=174" \
             -F "document=@$APK_PATH" \
             -F "caption=New Alpha-Build dropped🔥
         
