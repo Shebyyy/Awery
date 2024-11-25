@@ -44,7 +44,7 @@ jobs:
           LAST_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
           echo "Commits since $LAST_SHA:"
-          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10)
+          COMMIT_LOGS=$(git log "$LAST_SHA"..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/MrBoomDeveloper/Awery/commit/%H)" --max-count=10 --invert-grep --author="dependabot[bot]")
           COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/MrBoomDeveloper\/Awery\/pull\/\1)/g')
           COMMIT_LOGS="${COMMIT_LOGS//'%'/'%25'}"
           COMMIT_LOGS="${COMMIT_LOGS//$'\n'/'%0A'}"
@@ -94,16 +94,15 @@ jobs:
           BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Rename APK File
-        if: false
         run: |
-          mv app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk app/build/outputs/apk/alpha/release/Awery-Alpha.apk
+          mv app/build/outputs/apk/alpha/release/app-alpha-release-signed.apk app/build/outputs/apk/alpha/release/Awery_Alpha.apk
           
       - name: Upload Alpha APK
         uses: actions/upload-artifact@v4
         with:
           name: "Alpha APK"
           retention-days: 90
-          path: "app/build/outputs/apk/alpha/release/awery-alpha.apk"
+          path: "app/build/outputs/apk/alpha/release/Awery_Alpha.apk"
           
       - name: Upload APK to Discord and Telegram
         shell: bash
@@ -137,7 +136,7 @@ jobs:
           done < <(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | grep -oP '(?<=~)[^[]*' | sort | uniq -c | sort -rn)
         
           echo "Debug: Fetching contributors from GitHub"
-          contributors=$(curl -s "https://api.github.com/repos/${{ github.repository }}/contributors")
+          contributors=$(curl -s "https://api.github.com/repos/${{ github.repository }}/contributors" | jq 'map(select(.login != "dependabot[bot]"))')
           echo "Debug: Contributors response:"
           echo "$contributors"
         
@@ -264,7 +263,7 @@ jobs:
         
             if [ "$SKIP_BUILD" != "true" ]; then
             curl -F "payload_json=${contentbody}" \
-                 -F "Awery_debug=@app/build/outputs/apk/alpha/release/awery-alpha.apk" \
+                 -F "Awery_debug=@app/build/outputs/apk/alpha/release/Awery_Alpha.apk" \
                  ${{ secrets.DISCORD_WEBHOOK_URL }}
             else
             echo "Skipping APK upload to Discord due to SKIP_BUILD being set to true"
@@ -289,7 +288,7 @@ jobs:
           telegram_dev_info="<blockquote>${dev_info_tel}</blockquote>"
           echo "$telegram_dev_info"
           if [ "$SKIP_BUILD" != "true" ]; then
-          APK_PATH="app/build/outputs/apk/alpha/release/awery-alpha.apk"
+          APK_PATH="app/build/outputs/apk/alpha/release/Awery_Alpha.apk"
           response=$(curl -sS -f -X POST \
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
             -F "chat_id=-1002206819738" \
