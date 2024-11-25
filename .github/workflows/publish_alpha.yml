@@ -3,7 +3,7 @@ name: Build & Publish Alpha APK
 on:
   push:
     branches:
-      - master
+      - workflows
     paths-ignore:
       - "docs/**"
       - "README.md"
