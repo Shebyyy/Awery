@@ -153,32 +153,31 @@ jobs:
           service-account-json: "${{secrets.GOOGLE_KEY}}"
           overrwrite: true
           
-      - name: Upload APK to Discord and Telegram
+      - name: Upload Apk to Discord and Telegram
         shell: bash
-        run: |
-          # Prepare Discord embed
+        run: |      
           fetch_user_details() {
-            local login=$1
-            user_details=$(curl -s "https://api.github.com/users/$login")
-            name=$(echo "$user_details" | jq -r '.name // .login')
-            login=$(echo "$user_details" | jq -r '.login')
-            avatar_url=$(echo "$user_details" | jq -r '.avatar_url')
-            echo "$name|$login|$avatar_url"
+          local login=$1
+          user_details=$(curl -s "https://api.github.com/users/$login")
+          name=$(echo "$user_details" | jq -r '.name // .login')
+          login=$(echo "$user_details" | jq -r '.login')
+          avatar_url=$(echo "$user_details" | jq -r '.avatar_url')
+          echo "$name|$login|$avatar_url"
           }
-
-          # Additional information for the goats
+        
           declare -A additional_info
           additional_info["Sheby"]="\n Discord: <@612532963938271232>\n AniList: [Sheby](<https://anilist.co/user/5724017/>)"
           additional_info["itsmechinmoy"]="\n Discord: <@523539866311720963>\n AniList: [itsmechinmoy](<https://anilist.co/user/6110204/>)"
           additional_info["MrBoomDev"]="\n Discord: <@1034891767822176357>"
-          # Decimal color codes for contributors
-          declare -A contributor_colors
-          default_color="#1ac4c5"
-          contributor_colors["Sheby"]="#5d689d"
-          contributor_colors["itsmechinmoy"]="#ff7e95"
-          contributor_colors["MrBoomDev"]="#c51aa1"
-          hex_to_decimal() { printf '%d' "0x${1#"#"}"; }
 
+          declare -A contributor_colors
+          default_color="6121629"
+          contributor_colors["Sheby"]="#ff9b46"
+          contributor_colors["itsmechinmoy"]="#5d689d"
+          contributor_colors["MrBoomDev"]="#ff7e95"
+
+          hex_to_decimal() { printf '%d' "0x${1#"#"}"; }
+        
           declare -A recent_commit_counts
           echo "Debug: Processing COMMIT_LOG:"
           echo "$COMMIT_LOG"
@@ -313,7 +312,7 @@ jobs:
             curl -H "Content-Type: application/json" \
                -d "$discord_data" \
                ${{ secrets.DISCORD_WEBHOOK_URL }}
-
+               
           # Format commit messages for Telegram
           telegram_commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
               message=$(echo "$line" | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
