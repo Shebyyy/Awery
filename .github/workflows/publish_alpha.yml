@@ -8,7 +8,7 @@ on:
       - "docs/**"
       - "README.md"
       - "LICENSE.md"
-      - ".github/**"
+      #- ".github/**"
       - ".run/**"
 
 jobs:
