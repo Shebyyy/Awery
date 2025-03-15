@@ -14,6 +14,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      moblie_link: ${{ steps.gdriveUpload_moblie.outputs.web-content-link }}
+      tv_link: ${{ steps.gdriveUpload_tv.outputs.web-content-link }}
     env:
       COMMIT_LOG: ""
 
@@ -129,66 +132,95 @@ jobs:
           name: "Tv Apk"
           retention-days: 90
           path: "app/build/outputs/apk/alphaTv/release/awery-tv-alpha.apk"
+
+      - name: Upload moblie File To Google Drive
+        id: gdriveUpload_mobile
+        uses: hoatruongdev09/google-drive-file-upload-github-action@v1.1
+        with:
+          file-path: app/build/outputs/apk/alphaMobile/release/awery-mobile-alpha.apk
+          upload-name: Awery-mobile-alpha.apk
+          upload-to-folder-id: 1mCTGzZ-BR9C-4REzCmLlh7fO95vdYGT5 #need to change it
+          service-account-json: "${{secrets.GOOGLE_KEY}}"
+          overrwrite: true
+      
+      - name: Upload tv File To Google Drive
+        id: gdriveUpload_tv
+        uses: hoatruongdev09/google-drive-file-upload-github-action@v1.1
+        with:
+          file-path: app/build/outputs/apk/alphaTv/release/awery-tv-alpha.apk
+          upload-name: awery-tv-alpha.apk
+          upload-to-folder-id: 1mCTGzZ-BR9C-4REzCmLlh7fO95vdYGT5 #need to change it
+          service-account-json: "${{secrets.GOOGLE_KEY}}"
+          overrwrite: true
           
-      - name: Upload Apk to Discord and Telegram
+      - name: Upload APK to Discord and Telegram
         shell: bash
-        run: |      
+        run: |
+          # Prepare Discord embed
           fetch_user_details() {
-          local login=$1
-          user_details=$(curl -s "https://api.github.com/users/$login")
-          name=$(echo "$user_details" | jq -r '.name // .login')
-          login=$(echo "$user_details" | jq -r '.login')
-          avatar_url=$(echo "$user_details" | jq -r '.avatar_url')
-          echo "$name|$login|$avatar_url"
+            local login=$1
+            user_details=$(curl -s "https://api.github.com/users/$login")
+            name=$(echo "$user_details" | jq -r '.name // .login')
+            login=$(echo "$user_details" | jq -r '.login')
+            avatar_url=$(echo "$user_details" | jq -r '.avatar_url')
+            echo "$name|$login|$avatar_url"
           }
-        
+
+          # Additional information for the goats
           declare -A additional_info
           additional_info["Sheby"]="\n Discord: <@612532963938271232>\n AniList: [Sheby](<https://anilist.co/user/5724017/>)"
           additional_info["itsmechinmoy"]="\n Discord: <@523539866311720963>\n AniList: [itsmechinmoy](<https://anilist.co/user/6110204/>)"
           additional_info["MrBoomDev"]="\n Discord: <@1034891767822176357>"
+          # Decimal color codes for contributors
           declare -A contributor_colors
-          default_color="6121629"
-          contributor_colors["Sheby"]="#ff9b46"
-          contributor_colors["itsmechinmoy"]="#5d689d"
-          contributor_colors["MrBoomDev"]="#ff7e95"
+          default_color="#1ac4c5"
+          contributor_colors["Sheby"]="#5d689d"
+          contributor_colors["itsmechinmoy"]="#ff7e95"
+          contributor_colors["MrBoomDev"]="#c51aa1"
           hex_to_decimal() { printf '%d' "0x${1#"#"}"; }
-        
+
+          # Count recent commits and create an associative array
           declare -A recent_commit_counts
           echo "Debug: Processing COMMIT_LOG:"
           echo "$COMMIT_LOG"
           while read -r count name; do
-          recent_commit_counts["$name"]=$count
-          echo "Debug: Commit count for $name: $count"
+              recent_commit_counts["$name"]=$count
+              echo "Debug: Commit count for $name: $count"
           done < <(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | grep -oP '(?<=~)[^[]*' | sort | uniq -c | sort -rn)
-        
+
           echo "Debug: Fetching contributors from GitHub"
           contributors=$(curl -s "https://api.github.com/repos/${{ github.repository }}/contributors" | jq 'map(select(.login != "dependabot[bot]"))')
           echo "Debug: Contributors response:"
           echo "$contributors"
-        
+
+          # Create a sorted list of contributors based on recent commit counts
           sorted_contributors=$(for login in $(echo "$contributors" | jq -r '.[].login'); do
-          user_info=$(fetch_user_details "$login")
-          name=$(echo "$user_info" | cut -d'|' -f1)
-          count=${recent_commit_counts["$name"]:-0}
-          echo "$count|$login"
+              user_info=$(fetch_user_details "$login")
+              name=$(echo "$user_info" | cut -d'|' -f1)
+              count=${recent_commit_counts["$name"]:-0}
+              echo "$count|$login"
           done | sort -rn | cut -d'|' -f2)
-        
+
+          # Initialize needed variables
           developers=""
           committers_count=0
           max_commits=0
           top_contributor=""
           top_contributor_count=0
           top_contributor_avatar=""
-          embed_color=$default_color
-        
+          embed_color=$(hex_to_decimal "$default_color")
+
+          # Process contributors in the new order
           while read -r login; do
-          user_info=$(fetch_user_details "$login")
-          name=$(echo "$user_info" | cut -d'|' -f1)
-          login=$(echo "$user_info" | cut -d'|' -f2)
-          avatar_url=$(echo "$user_info" | cut -d'|' -f3)
-          
+            user_info=$(fetch_user_details "$login")
+            name=$(echo "$user_info" | cut -d'|' -f1)
+            login=$(echo "$user_info" | cut -d'|' -f2)
+            avatar_url=$(echo "$user_info" | cut -d'|' -f3)
+
+          # Only process if they have recent commits
           commit_count=${recent_commit_counts["$name"]:-0}
           if [ $commit_count -gt 0 ]; then
+            # Update top contributor information
             if [ $commit_count -gt $max_commits ]; then
               max_commits=$commit_count
               top_contributors=("$login")
@@ -198,58 +230,69 @@ jobs:
             elif [ $commit_count -eq $max_commits ]; then
               top_contributors+=("$login")
               top_contributor_count=$((top_contributor_count + 1))
-              embed_color=$default_color
+              embed_color=$(hex_to_decimal "$default_color")
             fi
             echo "Debug top contributors:"
             echo "$top_contributors"
-            
+
+
+            # Get commit count for this contributor on the main branch
             branch_commit_count=$(git log --author="$login" --author="$name" --oneline | awk '!seen[$0]++' | wc -l)
-            
+
+            # Debug: Print recent_commit_counts
             echo "Debug: recent_commit_counts contents:"
             for key in "${!recent_commit_counts[@]}"; do
               echo "$key: ${recent_commit_counts[$key]}"
             done
-            
+
             extra_info="${additional_info[$name]}"
             if [ -n "$extra_info" ]; then
               extra_info=$(echo "$extra_info" | sed 's/\\n/\n- /g')
             fi
-            
-              developer_entry="◗ **${name}** ${extra_info}
+
+            # Construct the developer entry
+            developer_entry="◗ **${name}** ${extra_info}
           - Github: [${login}](https://github.com/${login})
           - Commits: ${branch_commit_count}"
+
+
+
+            # Add the entry to developers, with a newline if it's not the first entry
             if [ -n "$developers" ]; then
               developers="${developers}
           ${developer_entry}"
-            else
-              developers="${developer_entry}"
+              else
+                developers="${developer_entry}"
+              fi
+              committers_count=$((committers_count + 1))
             fi
-            committers_count=$((committers_count + 1))
-          fi
           done <<< "$sorted_contributors"
-        
+
+          # Set the thumbnail URL and color based on top contributor(s)
           if [ $top_contributor_count -eq 1 ]; then
-          thumbnail_url="$top_contributor_avatar"
+            thumbnail_url="$top_contributor_avatar"
           else
-          thumbnail_url="https://i.imgur.com/sP4FR70.png"
-          embed_color=$default_color
+            thumbnail_url="https://i.imgur.com/sP4FR70.png"
+            embed_color=$(hex_to_decimal "$default_color")
           fi
-        
+
+          # Truncate field values
           max_length=1000
           commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g; s/^/\n/')
           if [ ${#developers} -gt $max_length ]; then
-            developers="${developers:0:$max_length}"
+            developers="${developers:0:$max_length}... (truncated)"
           fi
           if [ ${#commit_messages} -gt $max_length ]; then
-            commit_messages="${commit_messages:0:$max_length}"
+            commit_messages="${commit_messages:0:$max_length}... (truncated)"
           fi
+          # Construct Discord payload
           discord_data=$(jq -nc \
                         --arg field_value "$commit_messages" \
                         --arg author_value "$developers" \
                         --arg footer_text "Version $VERSION" \
                         --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
                         --arg thumbnail_url "$thumbnail_url" \
-                        --argjson embed_color "$embed_color" \
+                        --arg embed_color "$embed_color" \
                         '{
                           "content": "<@&1208839371575529572>",
                           "embeds": [
@@ -279,62 +322,92 @@ jobs:
                           ],
                           "attachments": []
                         }')
-            echo "Debug: Final Discord payload:"
-            echo "$discord_data"
-        
-            curl -H "Content-Type: application/json" \
-               -d "$discord_data" \
-               ${{ secrets.DISCORD_WEBHOOK_URL }}
-            echo "You have only send an embed to discord due to SKIP_BUILD being set to true"
-        
-            if [ "$SKIP_BUILD" != "true" ]; then
-            curl -F "payload_json=${contentbody}" \
-                 -F "Awery_debug=@app/build/outputs/apk/alphaMobile/release/awery-mobile-alpha.apk" \
-                 ${{ secrets.DISCORD_WEBHOOK_URL }}
-            else
-            echo "Skipping APK upload to Discord due to SKIP_BUILD being set to true"
-            fi
-            COMMIT_LOG=$(cat commit_log.txt)
-          if [ ${#COMMIT_LOG} -gt 1024 ]; then
-            COMMIT_LOG="${COMMIT_LOG:0:900}"
-          fi
-          TRUNCATED_COMMIT_LOG="$COMMIT_LOG"
-          telegram_commit_messages=$(echo "$TRUNCATED_COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
-            message=$(echo "$line" | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
-            message=$(echo "$message" | sed -E 's/\[#([0-9]+)\]\((https:\/\/github\.com\/[^)]+)\)/<a href="\2">#\1<\/a>/g')
-            echo "$message"
+          echo "Debug: Final Discord payload is:"
+          echo "$discord_data"
+          # Send Discord message
+          curl -H "Content-Type: application/json" \
+              -d "$discord_data" \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+          # Format commit messages for Telegram
+          telegram_commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
+              message=$(echo "$line" | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
+              message=$(echo "$message" | sed -E 's/\[#([0-9]+)\]\((https:\/\/github\.com\/[^)]+)\)/<a href="\2">#\1<\/a>/g')
+              echo "$message"
           done)
           telegram_commit_messages="<blockquote>${telegram_commit_messages}</blockquote>"
+          echo "$telegram_commit_messages"
+
+          # Configuring dev info
           echo "$developers" > dev_info.txt
-          echo "$developers"
-          chmod +x workflowscripts/tel_parser.sed
-          ./workflowscripts/tel_parser.sed dev_info.txt >> output.txt
+          # making the file executable
+          chmod +x scripts/tel_parser.sed
+          ./scripts/tel_parser.sed dev_info.txt >> output.txt
           dev_info_tel=$(< output.txt)
-        
+
           telegram_dev_info="<blockquote>${dev_info_tel}</blockquote>"
           echo "$telegram_dev_info"
-          if [ "$SKIP_BUILD" != "true" ]; then
-          APK_PATH="app/build/outputs/apk/alphaMobile/release/awery-mobile-alpha.apk"
+
+
+          # Upload APK to Telegram
           response=$(curl -sS -f -X POST \
-            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-            -F "chat_id=-1002206819738" \
-            -F "message_thread_id=174" \
-            -F "document=@$APK_PATH" \
-            -F "caption=New Alpha-Build dropped🔥
-        
+              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKKEN}}/sendDocument" \
+              -F "chat_id=-1002066701332" \
+              -F "message_thread_id=737" \
+              -F "caption=New Alpha-Build dropped 🔥
+
           Commits:
           ${telegram_commit_messages}
-          Dev:
+          Devs:
           ${telegram_dev_info}
           version: ${VERSION}" \
               -F "parse_mode=HTML")
-          else
-            echo "skipping because skip build set to true"
-          fi
         
         env:
           COMMIT_LOG: ${{ env.COMMIT_LOG }}
           VERSION: ${{ env.VERSION }}
+
+      - name: Send Discord Notification with Download Links
+        env:
+          MOBLIE_LINK: ${{ needs.build-android.outputs.moblie_link }}
+          TV_LINK: ${{ needs.build-android.outputs.tv_link }}
+          
+        run: |
+          # Check and send individual Discord messages
+          if [[ -n "$MOBLIE_LINK" ]]; then 
+            MOBLIE_LINK="[Download]($MOBLIE_LINK) | **Moblie APK**"
+          else
+            MOBLIE_LINK=""
+          fi
+
+          if [[ -n "$TV_LINK" ]]; then 
+            TV_LINK="[Download]($TV_LINK) | **TV APK**"
+          else
+            TV_LINK=""
+          fi
+
+          # Prepare and send the Discord message
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\": \"🔹 ${MOBLIE_LINK}\n🔹 ${TV_LINK}\"}" \
+               "${{ secrets.DISCORD_WEBHOOK_ALPHA }}"
+
+      - name: Send Telegram Notification
+        env:
+          ANDROID_ARM64_LINK: ${{ needs.build-android.outputs.MOBLIE_link }}
+          ANDROID_ARMEABI_LINK: ${{ needs.build-android.outputs.TV_link }}
+        run: |
+          TELEGRAM_MESSAGE="🎉 *${{ env.LATEST_TAG }} Released* 🎉
+      
+          🔹 [Download]($MOBLIE_LINK) | **Moblie APK**
+          🔹 [Download]($TV_LINK) | **TV APK**
+      
+          curl -sS -f -X POST \
+              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+              -F "chat_id=-1002206819738" \
+              -F "message_thread_id=174" \
+              -F parse_mode="Markdown" \
+              -F disable_notification=true \
+              -F "text=$TELEGRAM_MESSAGE"
 
       - name: Upload Current SHA as Artifact
         uses: actions/upload-artifact@v4
@@ -347,3 +420,5 @@ jobs:
         with:
           name: commit-log
           path: commit_log.txt
+
+          
