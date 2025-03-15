@@ -326,7 +326,7 @@ jobs:
           echo "$developers" > dev_info.txt
           # making the file executable
           chmod +x scripts/tel_parser.sed
-          ./scripts/tel_parser.sed dev_info.txt >> output.txt
+          ./workflowscripts/tel_parser.sed dev_info.txt >> output.txt
           dev_info_tel=$(< output.txt)
 
           telegram_dev_info="<blockquote>${dev_info_tel}</blockquote>"
