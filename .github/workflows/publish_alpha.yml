@@ -139,7 +139,7 @@ jobs:
         with:
           file-path: app/build/outputs/apk/alphaMobile/release/awery-mobile-alpha.apk
           upload-name: Awery-mobile-alpha.apk
-          upload-to-folder-id: 1mCTGzZ-BR9C-4REzCmLlh7fO95vdYGT5 #need to change it
+          upload-to-folder-id: 1vrkrvYCrhqR5Lt-RaDfP7hPM0IaIL54M #need to change it
           service-account-json: "${{secrets.GOOGLE_KEY}}"
           overrwrite: true
       
@@ -149,170 +149,63 @@ jobs:
         with:
           file-path: app/build/outputs/apk/alphaTv/release/awery-tv-alpha.apk
           upload-name: awery-tv-alpha.apk
-          upload-to-folder-id: 1mCTGzZ-BR9C-4REzCmLlh7fO95vdYGT5 #need to change it
+          upload-to-folder-id: 1vrkrvYCrhqR5Lt-RaDfP7hPM0IaIL54M #need to change it
           service-account-json: "${{secrets.GOOGLE_KEY}}"
           overrwrite: true
           
-      - name: Upload Apk to Discord and Telegram
+      - name: Upload APK to Discord and Telegram
         shell: bash
-        run: |      
-          fetch_user_details() {
-          local login=$1
-          user_details=$(curl -s "https://api.github.com/users/$login")
-          name=$(echo "$user_details" | jq -r '.name // .login')
-          login=$(echo "$user_details" | jq -r '.login')
-          avatar_url=$(echo "$user_details" | jq -r '.avatar_url')
-          echo "$name|$login|$avatar_url"
-          }
-        
-          declare -A additional_info
-          additional_info["Sheby"]="\n Discord: <@612532963938271232>\n AniList: [Sheby](<https://anilist.co/user/5724017/>)"
-          additional_info["itsmechinmoy"]="\n Discord: <@523539866311720963>\n AniList: [itsmechinmoy](<https://anilist.co/user/6110204/>)"
-          additional_info["MrBoomDev"]="\n Discord: <@1034891767822176357>"
-
-          declare -A contributor_colors
-          default_color="6121629"
-          contributor_colors["Sheby"]="#ff9b46"
-          contributor_colors["itsmechinmoy"]="#5d689d"
-          contributor_colors["MrBoomDev"]="#ff7e95"
-
-          hex_to_decimal() { printf '%d' "0x${1#"#"}"; }
-        
-          declare -A recent_commit_counts
-          echo "Debug: Processing COMMIT_LOG:"
-          echo "$COMMIT_LOG"
-          while read -r count name; do
-          recent_commit_counts["$name"]=$count
-          echo "Debug: Commit count for $name: $count"
-          done < <(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | grep -oP '(?<=~)[^[]*' | sort | uniq -c | sort -rn)
-        
-          echo "Debug: Fetching contributors from GitHub"
-          contributors=$(curl -s "https://api.github.com/repos/${{ github.repository }}/contributors" | jq 'map(select(.login | test("\\[bot\\]") | not))')
-          echo "Debug: Contributors response:"
-          echo "$contributors"
-        
-          sorted_contributors=$(for login in $(echo "$contributors" | jq -r '.[].login'); do
-          user_info=$(fetch_user_details "$login")
-          name=$(echo "$user_info" | cut -d'|' -f1)
-          count=${recent_commit_counts["$name"]:-0}
-          echo "$count|$login"
-          done | sort -rn | cut -d'|' -f2)
-        
-          developers=""
-          committers_count=0
-          max_commits=0
-          top_contributor=""
-          top_contributor_count=0
-          top_contributor_avatar=""
-          embed_color=$default_color
-        
-          while read -r login; do
-          user_info=$(fetch_user_details "$login")
-          name=$(echo "$user_info" | cut -d'|' -f1)
-          login=$(echo "$user_info" | cut -d'|' -f2)
-          avatar_url=$(echo "$user_info" | cut -d'|' -f3)
-          
-          commit_count=${recent_commit_counts["$name"]:-0}
-          if [ $commit_count -gt 0 ]; then
-            if [ $commit_count -gt $max_commits ]; then
-              max_commits=$commit_count
-              top_contributors=("$login")
-              top_contributor_count=1
-              top_contributor_avatar="$avatar_url"
-              embed_color=$(hex_to_decimal "${contributor_colors[$name]:-$default_color}")
-            elif [ $commit_count -eq $max_commits ]; then
-              top_contributors+=("$login")
-              top_contributor_count=$((top_contributor_count + 1))
-              embed_color=$default_color
-            fi
-            echo "Debug top contributors:"
-            echo "$top_contributors"
-            
-            branch_commit_count=$(git log --author="$login" --author="$name" --oneline | awk '!seen[$0]++' | wc -l)
-            
-            echo "Debug: recent_commit_counts contents:"
-            for key in "${!recent_commit_counts[@]}"; do
-              echo "$key: ${recent_commit_counts[$key]}"
-            done
-            
-            extra_info="${additional_info[$name]}"
-            if [ -n "$extra_info" ]; then
-              extra_info=$(echo "$extra_info" | sed 's/\\n/\n- /g')
-            fi
-            
-              developer_entry="◗ **${name}** ${extra_info}
-          - Github: [${login}](https://github.com/${login})
-          - Commits: ${branch_commit_count}"
-
-            if [ -n "$developers" ]; then
-              developers="${developers}
-          ${developer_entry}"
-            else
-              developers="${developer_entry}"
-            fi
-            committers_count=$((committers_count + 1))
-          fi
-          done <<< "$sorted_contributors"
-        
-          if [ $top_contributor_count -eq 1 ]; then
-          thumbnail_url="$top_contributor_avatar"
-          else
-          thumbnail_url="https://i.imgur.com/sP4FR70.png"
-          embed_color=$default_color
-          fi
-        
-          max_length=1000
-          commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g; s/^/\n/')
-          if [ ${#developers} -gt $max_length ]; then
-            developers="${developers:0:$max_length}"
-          fi
+        run: |
+          # Truncate field values
+          max_length=1024
+          commit_messages=$(echo "$COMMIT_LOGS" | sed 's/%0A/\n/g; s/^/\n/')
           if [ ${#commit_messages} -gt $max_length ]; then
             commit_messages="${commit_messages:0:$max_length}"
           fi
-
+          
+          # Set default values if variables are empty
+          : "${ping_variable:=<@&1208839371575529572>}"
+          : "${commit_messages:=No commits available.}"
+          : "${embed_color:=16711680}"  # Default red color
+          # Construct Discord payload
           discord_data=$(jq -nc \
-                        --arg field_value "$commit_messages" \
-                        --arg author_value "$developers" \
-                        --arg footer_text "Version $VERSION" \
-                        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
-                        --arg thumbnail_url "$thumbnail_url" \
-                        --argjson embed_color "$embed_color" \
-                        '{
-                          "content": "<@&1208839371575529572>",
-                          "embeds": [
-                            {
-                              "title": "New Alpha-Build dropped 🔥",
-                              "color": $embed_color,
-                              "fields": [
+                            --arg content "$ping_variable" \
+                            --arg field_value "$commit_messages" \
+                            --arg footer_text "Version $VERSION" \
+                            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+                            --arg thumbnail_url "${thumbnail_url:-https://i.imgur.com/sP4FR70.png}" \
+                            --arg embed_color "$embed_color" \
+                            '{
+                              "content": $content,
+                              "embeds": [
                                 {
-                                  "name": "Commits:",
-                                  "value": $field_value,
-                                  "inline": true
-                                },
-                                {
-                                  "name": "Developers:",
-                                  "value": $author_value,
-                                  "inline": false
+                                  "title": "New Alpha-Build dropped 🔥",
+                                  "color": ($embed_color | tonumber),
+                                  "fields": [
+                                    {
+                                      "name": "Commits:",
+                                      "value": $field_value,
+                                      "inline": true
+                                    }
+                                  ],
+                                  "footer": {
+                                    "text": $footer_text
+                                  },
+                                  "timestamp": $timestamp,
+                                  "thumbnail": {
+                                    "url": $thumbnail_url
+                                  }
                                 }
                               ],
-                              "footer": {
-                                "text": $footer_text
-                              },
-                              "timestamp": $timestamp,
-                              "thumbnail": {
-                                "url": $thumbnail_url
-                              }
-                            }
-                          ],
-                          "attachments": []
-                        }')
-            echo "Debug: Final Discord payload:"
-            echo "$discord_data"
-        
+                              "attachments": []
+                            }')
+          echo "Debug: Final Discord payload is:"
+          echo "$discord_data"
+          # Send Discord message
             curl -H "Content-Type: application/json" \
                -d "$discord_data" \
                ${{ secrets.DISCORD_WEBHOOK_URL }}
-               
+              
           # Format commit messages for Telegram
           telegram_commit_messages=$(echo "$COMMIT_LOG" | sed 's/%0A/\n/g' | while read -r line; do
               message=$(echo "$line" | sed -E 's/● (.*) ~(.*) \[֍\]\((.*)\)/● \1 ~\2 <a href="\3">֍<\/a>/')
@@ -321,32 +214,20 @@ jobs:
           done)
           telegram_commit_messages="<blockquote>${telegram_commit_messages}</blockquote>"
           echo "$telegram_commit_messages"
-
-          # Configuring dev info
-          echo "$developers" > dev_info.txt
-          # making the file executable
-          chmod +x scripts/tel_parser.sed
-          ./workflowscripts/tel_parser.sed dev_info.txt >> output.txt
-          dev_info_tel=$(< output.txt)
-
-          telegram_dev_info="<blockquote>${dev_info_tel}</blockquote>"
-          echo "$telegram_dev_info"
-
-
+         
           # Upload APK to Telegram
           response=$(curl -sS -f -X POST \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKKEN}}/sendDocument" \
               -F "chat_id=-1002066701332" \
               -F "message_thread_id=737" \
               -F "caption=New Alpha-Build dropped 🔥
-
+              
           Commits:
           ${telegram_commit_messages}
-          Devs:
-          ${telegram_dev_info}
-          version: ${VERSION}" \
-              -F "parse_mode=HTML")
-        
+          Version: ${VERSION}" \
+              -d "parse_mode=HTML" \
+              -d "disable_web_page_preview=true")
+                      
         env:
           COMMIT_LOG: ${{ env.COMMIT_LOG }}
           VERSION: ${{ env.VERSION }}
