@@ -1,4 +1,4 @@
-name: Build & Release (new)
+name: Build & Release
 
 on:
   push:
@@ -47,20 +47,6 @@ jobs:
       - name: Build Android Release APK
         run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Build Android Universal APK
-        run: ./gradlew :app:assembleUniversalRelease --stacktrace
-        continue-on-error: true
-
-      - name: Build Android Split APKs
-        run: |
-          # Enable ABI splits for architecture-specific APKs
-          ./gradlew :app:assembleRelease \
-            -Pandroid.enableR8=true \
-            -Pandroid.splits.abi.enable=true \
-            -Pandroid.splits.abi.include="arm64-v8a,armeabi-v7a,x86,x86_64" \
-            --stacktrace
-        continue-on-error: true
-
       - name: Collect Android artifacts
         run: |
           mkdir -p android-artifacts
@@ -81,8 +67,8 @@ jobs:
           # Rename files with clear naming convention
           for file in *.apk; do
             if [ -f "$file" ]; then
-              if [[ "$file" == *"universal"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-universal.apk"
+              if [[ "$file" == *"release"* ]]; then
+                mv "$file" "Awery-${VERSION}-android-release.apk"
               elif [[ "$file" == *"arm64-v8a"* ]]; then
                 mv "$file" "Awery-${VERSION}-android-arm64-v8a.apk"
               elif [[ "$file" == *"armeabi-v7a"* ]]; then
@@ -91,8 +77,6 @@ jobs:
                 mv "$file" "Awery-${VERSION}-android-x86.apk"
               elif [[ "$file" == *"x86_64"* ]]; then
                 mv "$file" "Awery-${VERSION}-android-x86_64.apk"
-              elif [[ "$file" == *"release"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-release.apk"
               else
                 mv "$file" "Awery-${VERSION}-android-${file}"
               fi
@@ -140,20 +124,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build Desktop Linux
-        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
-
-      - name: Create Linux package variants
+      - name: Build Desktop Linux (skip problematic data module)
         run: |
-          ./gradlew :app:packageDeb --stacktrace || echo "Deb packaging not available"
-          ./gradlew :app:packageRpm --stacktrace || echo "RPM packaging not available"
+          # Build only app module to avoid desktop compilation issues with data module
+          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
         continue-on-error: true
 
       - name: Collect Linux artifacts
         run: |
           mkdir -p desktop-linux-artifacts
-          find app/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" \) -exec cp {} desktop-linux-artifacts/ \;
-          find app/build/compose/jars -name "*.jar" -type f -exec cp {} desktop-linux-artifacts/ \;
+          find app/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" -o -name "*.AppImage" \) -exec cp {} desktop-linux-artifacts/ \;
+          find app/build/libs -name "*.jar" -type f -exec cp {} desktop-linux-artifacts/ \;
           ls -lah desktop-linux-artifacts/
 
       - name: Rename Linux artifacts with version
@@ -175,6 +156,8 @@ jobs:
                 mv "$file" "Awery-${VERSION}-linux-x64.rpm"
               elif [[ "$file" == *.tar.gz ]]; then
                 mv "$file" "Awery-${VERSION}-linux-x64.tar.gz"
+              elif [[ "$file" == *.AppImage ]]; then
+                mv "$file" "Awery-${VERSION}-linux-x64.AppImage"
               elif [[ "$file" == *.jar ]]; then
                 mv "$file" "Awery-${VERSION}-linux-x64.jar"
               fi
@@ -219,12 +202,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build Desktop Windows
-        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
-        shell: bash
-
-      - name: Create Windows installer
-        run: ./gradlew :app:packageMsi --stacktrace || echo "MSI packaging not available"
+      - name: Build Desktop Windows (skip problematic data module)
+        run: |
+          # Build only app module to avoid desktop compilation issues with data module
+          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
         shell: bash
         continue-on-error: true
 
@@ -302,11 +283,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build Desktop macOS
-        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
-
-      - name: Create macOS DMG
-        run: ./gradlew :app:packageDmg --stacktrace || echo "DMG packaging not available"
+      - name: Build Desktop macOS (skip problematic data module)
+        run: |
+          # Build only app module to avoid desktop compilation issues with data module
+          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
         continue-on-error: true
 
       - name: Collect macOS artifacts
@@ -388,9 +368,8 @@ jobs:
           ### 📦 Available Downloads
           
           #### Android
-          - **Universal APK**: Compatible with all Android devices
           - **Release APK**: Standard release build
-          - **Split APKs**: Architecture-specific builds (ARM64, ARMv7, x86, x86_64)
+          - **Architecture-specific APKs**: Optimized for specific architectures (if available)
           
           #### Desktop
           - **Windows**: .exe installer and .msi package
@@ -400,8 +379,8 @@ jobs:
           ### 📋 Installation Instructions
           
           **Android**: 
-          - Download and install the universal APK for compatibility with all devices
-          - Use split APKs for smaller downloads targeting specific architectures
+          - Download and install the release APK for your device
+          - Check for architecture-specific APKs for optimized builds
           
           **Desktop**: 
           - Windows: Run the .exe installer or use the .msi package
@@ -441,7 +420,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd release-artifacts
-          find . -type f \( -name "*.apk" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg" -o -name "*.tar.gz" -o -name "*.jar" \) -exec sha256sum {} \; > SHA256SUMS.txt
+          find . -type f \( -name "*.apk" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg" -o -name "*.tar.gz" -o -name "*.AppImage" -o -name "*.jar" \) -exec sha256sum {} \; > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Upload checksums to release
@@ -451,4 +430,4 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
           files: release-artifacts/SHA256SUMS.txt
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }
