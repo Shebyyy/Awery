@@ -115,23 +115,10 @@ android {
     compileSdk = property("awery.sdk.target").toString().toInt()
 
     defaultConfig {
-        applicationId = "com.mrboomdev.awery"
         versionName = property("awery.app.versionName").toString()
         versionCode = property("awery.app.versionCode").toString().toInt()
         targetSdk = property("awery.sdk.target").toString().toInt()
         minSdk = property("awery.sdk.min").toString().toInt()
-    }
-
-    signingConfigs {
-        create("release") {
-            val keystore = System.getenv("KEYSTORE_FILE")
-            if (keystore != null) {
-                storeFile = file(keystore)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
-            }
-        }
     }
 
     buildTypes {
@@ -144,41 +131,32 @@ android {
         }
 
         release {
-            isDebuggable = false
+            versionNameSuffix = "-release"
+            manifestPlaceholders["APP_NAME"] = "Awery"
             isMinifyEnabled = false
             isShrinkResources = false
-
-            signingConfig = signingConfigs.getByName("release")
-
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-            enableV4Signing = false
-
-            manifestPlaceholders["APP_NAME"] = "Awery"
-
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
     buildFeatures {
+        aidl = false
+        dataBinding = false
+        mlModelBinding = false
+        prefab = false
+        renderScript = false
+        shaders = false
+        viewBinding = false
         compose = true
-        buildConfig = true
-    }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // Used to check whatever we are in the debug build or not
+        buildConfig = true
     }
 
     @Suppress("UnstableApiUsage")
     androidResources {
         localeFilters += getLocales()
     }
-}
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
