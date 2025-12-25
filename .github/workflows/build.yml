@@ -33,18 +33,15 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Android Release APK
+      - name: Build Android Release APK (Universal)
         run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Build Android Universal APK
-        run: ./gradlew :app:assembleUniversalRelease --stacktrace
-        continue-on-error: true
-
-      - name: Build Android Split APKs
+      - name: Build Android App Bundle (AAB)
         run: ./gradlew :app:bundleRelease --stacktrace
         continue-on-error: true
 
       - name: Sign APKs (if keystore available)
+        if: ${{ secrets.KEYSTORE_FILE != '' }}
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
           ./gradlew :app:assembleRelease \
@@ -57,25 +54,52 @@ jobs:
       - name: Collect Android artifacts
         run: |
           mkdir -p android-artifacts
-          find app/build/outputs/apk -name "*.apk" -type f -exec cp {} android-artifacts/ \;
-          find app/build/outputs/bundle -name "*.aab" -type f -exec cp {} android-artifacts/ \;
+          # Find all APK files (includes universal and architecture-specific splits)
+          find app/build/outputs/apk/release -name "*.apk" -type f -exec cp {} android-artifacts/ \;
+          # Find AAB files if they exist
+          find app/build/outputs/bundle/release -name "*.aab" -type f -exec cp {} android-artifacts/ \; || true
+          echo "=== Android Artifacts Found ==="
           ls -lah android-artifacts/
 
       - name: Rename APKs with version
         run: |
           cd android-artifacts
           VERSION="${GITHUB_REF#refs/tags/}"
-          if [ -z "$VERSION" ]; then
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
             VERSION="${{ github.event.inputs.version }}"
           fi
           if [ -z "$VERSION" ]; then
             VERSION="dev-$(date +%Y%m%d)"
           fi
-          for file in *.apk; do
+          
+          echo "=== Renaming artifacts with version: $VERSION ==="
+          
+          for file in *.apk *.aab; do
             if [ -f "$file" ]; then
-              mv "$file" "Awery-${VERSION}-${file}"
+              # Extract architecture from filename if present
+              if [[ "$file" == *"arm64-v8a"* ]]; then
+                new_name="Awery-${VERSION}-arm64-v8a.apk"
+              elif [[ "$file" == *"armeabi-v7a"* ]]; then
+                new_name="Awery-${VERSION}-armeabi-v7a.apk"
+              elif [[ "$file" == *"x86_64"* ]]; then
+                new_name="Awery-${VERSION}-x86_64.apk"
+              elif [[ "$file" == *"x86"* ]]; then
+                new_name="Awery-${VERSION}-x86.apk"
+              elif [[ "$file" == *"universal"* ]]; then
+                new_name="Awery-${VERSION}-universal.apk"
+              elif [[ "$file" == *".aab" ]]; then
+                new_name="Awery-${VERSION}.aab"
+              else
+                # Default naming for release APK
+                new_name="Awery-${VERSION}-universal.apk"
+              fi
+              
+              echo "Renaming: $file -> $new_name"
+              mv "$file" "$new_name"
             fi
           done
+          
+          echo "=== Final artifacts ==="
           ls -lah
 
       - name: Upload Android artifacts
@@ -252,9 +276,12 @@ jobs:
           ### 📦 Available Downloads
           
           #### Android
-          - **Universal APK**: Compatible with all Android devices
-          - **Split APKs**: Optimized for specific architectures
-          - **AAB**: For Google Play Store distribution
+          - **Universal APK**: `Awery-*-universal.apk` - Works on all Android devices (larger file size)
+          - **ARM64 APK**: `Awery-*-arm64-v8a.apk` - For modern 64-bit ARM devices (most common)
+          - **ARM32 APK**: `Awery-*-armeabi-v7a.apk` - For older 32-bit ARM devices
+          - **x86_64 APK**: `Awery-*-x86_64.apk` - For 64-bit x86 devices (emulators/tablets)
+          - **x86 APK**: `Awery-*-x86.apk` - For 32-bit x86 devices
+          - **AAB Bundle**: `Awery-*.aab` - For Google Play Store distribution
           
           #### Desktop
           - **Windows**: .exe, .msi installers
@@ -263,9 +290,23 @@ jobs:
           
           ### 📋 Installation Instructions
           
-          **Android**: Download and install the universal APK, or use split APKs for smaller downloads.
+          **Android**: 
+          - Download the **Universal APK** if you're unsure which architecture to use
+          - For smaller file size, download the architecture-specific APK for your device:
+            - Most modern phones use **ARM64** (arm64-v8a)
+            - Older phones use **ARM32** (armeabi-v7a)
+          - Enable "Install from Unknown Sources" in your device settings
+          - Install the APK file
           
           **Desktop**: Choose the appropriate package for your operating system.
+          
+          ### 🏗️ Architecture Guide
+          
+          Not sure which APK to download? Use the **Universal APK** - it works on all devices but is larger in size.
+          
+          For optimized downloads:
+          - **arm64-v8a**: Samsung Galaxy S8+, Google Pixel 2+, OnePlus 5+, most devices from 2017+
+          - **armeabi-v7a**: Older devices from before 2017
           
           ### 🔍 What's Changed
           
@@ -273,9 +314,9 @@ jobs:
           
           ### ⚠️ Notes
           
-          - Android APKs are unsigned unless configured with signing keys
+          - Android APKs are unsigned by default
           - Desktop builds are not code-signed
-          - Verify checksums before installation
+          - First launch may take longer as the app initializes
           EOF
           cat release_notes.md
 
