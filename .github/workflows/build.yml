@@ -45,7 +45,6 @@ jobs:
         continue-on-error: true
 
       - name: Sign APKs (if keystore available)
-        if: ${{ secrets.KEYSTORE_FILE != '' }}
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
           ./gradlew :app:assembleRelease \
