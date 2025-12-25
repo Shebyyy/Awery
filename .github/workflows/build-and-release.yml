@@ -11,423 +11,256 @@ on:
         required: false
         default: ''
 
+env:
+  APP_NAME: Awery
+
 jobs:
+# =========================
+# ANDROID
+# =========================
   build-android:
-    name: Build Android APKs
+    name: Build Android
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
+    env:
+      VERSION: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - run: chmod +x gradlew
 
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Build Android Release APK
+      - name: Build APKs
         run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Collect Android artifacts
+      - name: Collect APKs
         run: |
           mkdir -p android-artifacts
-          find app/build/outputs/apk -name "*.apk" -type f -exec cp {} android-artifacts/ \;
-          ls -lah android-artifacts/
+          find app/build/outputs/apk -name "*.apk" -exec cp {} android-artifacts/ \;
+          ls -lah android-artifacts
 
-      - name: Rename APKs with version and platform
+      - name: Rename APKs
         run: |
           cd android-artifacts
-          VERSION="${GITHUB_REF#refs/tags/}"
-          if [ -z "$VERSION" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          
-          # Rename files with clear naming convention
-          for file in *.apk; do
-            if [ -f "$file" ]; then
-              if [[ "$file" == *"release"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-release.apk"
-              elif [[ "$file" == *"arm64-v8a"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-arm64-v8a.apk"
-              elif [[ "$file" == *"armeabi-v7a"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-armeabi-v7a.apk"
-              elif [[ "$file" == *"x86"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-x86.apk"
-              elif [[ "$file" == *"x86_64"* ]]; then
-                mv "$file" "Awery-${VERSION}-android-x86_64.apk"
-              else
-                mv "$file" "Awery-${VERSION}-android-${file}"
-              fi
+          VERSION="${VERSION:-dev-$(date +%Y%m%d)}"
+
+          for f in *.apk; do
+            if [[ "$f" == *"release"* ]]; then
+              mv "$f" "$APP_NAME-$VERSION-android-release.apk"
+            elif [[ "$f" == *"arm64-v8a"* ]]; then
+              mv "$f" "$APP_NAME-$VERSION-android-arm64-v8a.apk"
+            elif [[ "$f" == *"armeabi-v7a"* ]]; then
+              mv "$f" "$APP_NAME-$VERSION-android-armeabi-v7a.apk"
+            elif [[ "$f" == *"x86_64"* ]]; then
+              mv "$f" "$APP_NAME-$VERSION-android-x86_64.apk"
+            elif [[ "$f" == *"x86"* ]]; then
+              mv "$f" "$APP_NAME-$VERSION-android-x86.apk"
             fi
           done
-          
+
           ls -lah
 
-      - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: android-artifacts
+          name: android
           path: android-artifacts/
-          retention-days: 7
 
-  build-desktop-linux:
+# =========================
+# LINUX
+# =========================
+  build-linux:
     name: Build Desktop (Linux)
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
+    env:
+      VERSION: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - run: chmod +x gradlew
 
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Build Desktop Linux (skip problematic data module)
-        run: |
-          # Build only app module to avoid desktop compilation issues with data module
-          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
+      - name: Build Linux
+        run: ./gradlew :app:packageDistributionForCurrentOS
         continue-on-error: true
 
-      - name: Collect Linux artifacts
+      - name: Collect Linux Artifacts
         run: |
-          mkdir -p desktop-linux-artifacts
-          find app/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" -o -name "*.AppImage" \) -exec cp {} desktop-linux-artifacts/ \;
-          find app/build/libs -name "*.jar" -type f -exec cp {} desktop-linux-artifacts/ \;
-          ls -lah desktop-linux-artifacts/
+          mkdir -p linux-artifacts
+          find app/build/compose/binaries -type f \
+            \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" -o -name "*.AppImage" \) \
+            -exec cp {} linux-artifacts/ \;
 
-      - name: Rename Linux artifacts with version
+      - name: Rename Linux Artifacts
         run: |
-          cd desktop-linux-artifacts
-          VERSION="${GITHUB_REF#refs/tags/}"
-          if [ -z "$VERSION" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          
-          for file in *; do
-            if [ -f "$file" ]; then
-              if [[ "$file" == *.deb ]]; then
-                mv "$file" "Awery-${VERSION}-linux-x64.deb"
-              elif [[ "$file" == *.rpm ]]; then
-                mv "$file" "Awery-${VERSION}-linux-x64.rpm"
-              elif [[ "$file" == *.tar.gz ]]; then
-                mv "$file" "Awery-${VERSION}-linux-x64.tar.gz"
-              elif [[ "$file" == *.AppImage ]]; then
-                mv "$file" "Awery-${VERSION}-linux-x64.AppImage"
-              elif [[ "$file" == *.jar ]]; then
-                mv "$file" "Awery-${VERSION}-linux-x64.jar"
-              fi
-            fi
+          cd linux-artifacts
+          VERSION="${VERSION:-dev-$(date +%Y%m%d)}"
+
+          for f in *; do
+            case "$f" in
+              *.deb) mv "$f" "$APP_NAME-$VERSION-linux-x64.deb" ;;
+              *.rpm) mv "$f" "$APP_NAME-$VERSION-linux-x64.rpm" ;;
+              *.tar.gz) mv "$f" "$APP_NAME-$VERSION-linux-x64.tar.gz" ;;
+              *.AppImage) mv "$f" "$APP_NAME-$VERSION-linux-x64.AppImage" ;;
+            esac
           done
-          
-          ls -lah
 
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: desktop-linux-artifacts
-          path: desktop-linux-artifacts/
-          retention-days: 7
+          name: linux
+          path: linux-artifacts/
 
-  build-desktop-windows:
+# =========================
+# WINDOWS
+# =========================
+  build-windows:
     name: Build Desktop (Windows)
     runs-on: windows-latest
     permissions:
       contents: write
+
+    env:
+      VERSION: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          cache: gradle
 
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Build Desktop Windows (skip problematic data module)
-        run: |
-          # Build only app module to avoid desktop compilation issues with data module
-          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
+      - name: Build Windows
+        run: ./gradlew :app:packageDistributionForCurrentOS
         shell: bash
         continue-on-error: true
 
-      - name: Collect Windows artifacts
+      - name: Collect Windows Artifacts
         run: |
-          mkdir -p desktop-windows-artifacts
-          Get-ChildItem -Path app/build/compose/binaries -Recurse -Include *.exe,*.msi,*.zip | Copy-Item -Destination desktop-windows-artifacts/
-          Get-ChildItem desktop-windows-artifacts/
+          mkdir desktop-windows-artifacts
+          Get-ChildItem app/build/compose/binaries -Recurse -Include *.exe,*.msi |
+            Copy-Item -Destination desktop-windows-artifacts
         shell: powershell
 
-      - name: Rename Windows artifacts with version
+      - name: Rename Windows Artifacts
         run: |
-          cd desktop-windows-artifacts
-          VERSION="${{ env.GITHUB_REF }}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          VERSION="${VERSION#refs/tags/}"
-          
-          powershell -Command "
-          Get-ChildItem -Path '.' -File | ForEach-Object {
-            \$file = \$_.Name
-            if (\$file -like '*.exe') {
-              Rename-Item -Path \$file -NewName \"Awery-$VERSION-windows-x64.exe\"
-            } elseif (\$file -like '*.msi') {
-              Rename-Item -Path \$file -NewName \"Awery-$VERSION-windows-x64.msi\"
-            } elseif (\$file -like '*.zip') {
-              Rename-Item -Path \$file -NewName \"Awery-$VERSION-windows-x64.zip\"
+          $VERSION = "${{ env.VERSION }}"
+          if ($VERSION -eq "") { $VERSION = "dev-$(Get-Date -Format yyyyMMdd)" }
+
+          Get-ChildItem desktop-windows-artifacts | ForEach-Object {
+            if ($_.Extension -eq ".exe") {
+              Rename-Item $_ "$env:APP_NAME-$VERSION-windows-x64.exe"
+            }
+            if ($_.Extension -eq ".msi") {
+              Rename-Item $_ "$env:APP_NAME-$VERSION-windows-x64.msi"
             }
           }
-          "
-          
-          Get-ChildItem
         shell: powershell
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows-artifacts
+          name: windows
           path: desktop-windows-artifacts/
-          retention-days: 7
 
-  build-desktop-macos:
+# =========================
+# MACOS
+# =========================
+  build-macos:
     name: Build Desktop (macOS)
     runs-on: macos-latest
     permissions:
       contents: write
+
+    env:
+      VERSION: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - run: chmod +x gradlew
 
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Build Desktop macOS (skip problematic data module)
-        run: |
-          # Build only app module to avoid desktop compilation issues with data module
-          ./gradlew :app:compileKotlinDesktop :app:jar :app:packageDistributionForCurrentOS --stacktrace
+      - name: Build macOS
+        run: ./gradlew :app:packageDistributionForCurrentOS
         continue-on-error: true
 
-      - name: Collect macOS artifacts
+      - name: Collect macOS Artifacts
         run: |
-          mkdir -p desktop-macos-artifacts
-          find app/build/compose/binaries -type f \( -name "*.dmg" -o -name "*.pkg" -o -name "*.tar.gz" \) -exec cp {} desktop-macos-artifacts/ \;
-          ls -lah desktop-macos-artifacts/
+          mkdir macos-artifacts
+          find app/build/compose/binaries -type f \
+            \( -name "*.dmg" -o -name "*.pkg" \) \
+            -exec cp {} macos-artifacts/ \;
 
-      - name: Rename macOS artifacts with version
+      - name: Rename macOS Artifacts
         run: |
-          cd desktop-macos-artifacts
-          VERSION="${GITHUB_REF#refs/tags/}"
-          if [ -z "$VERSION" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          
-          for file in *; do
-            if [ -f "$file" ]; then
-              if [[ "$file" == *.dmg ]]; then
-                mv "$file" "Awery-${VERSION}-macos-x64.dmg"
-              elif [[ "$file" == *.pkg ]]; then
-                mv "$file" "Awery-${VERSION}-macos-x64.pkg"
-              elif [[ "$file" == *.tar.gz ]]; then
-                mv "$file" "Awery-${VERSION}-macos-x64.tar.gz"
-              fi
-            fi
+          cd macos-artifacts
+          VERSION="${VERSION:-dev-$(date +%Y%m%d)}"
+
+          for f in *; do
+            [[ "$f" == *.dmg ]] && mv "$f" "$APP_NAME-$VERSION-macos-x64.dmg"
+            [[ "$f" == *.pkg ]] && mv "$f" "$APP_NAME-$VERSION-macos-x64.pkg"
           done
-          
-          ls -lah
 
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: desktop-macos-artifacts
-          path: desktop-macos-artifacts/
-          retention-days: 7
+          name: macos
+          path: macos-artifacts/
 
-  create-release:
+# =========================
+# RELEASE
+# =========================
+  release:
     name: Create GitHub Release
-    needs: [build-android, build-desktop-linux, build-desktop-windows, build-desktop-macos]
+    needs: [build-android, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+    env:
+      VERSION: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+
+    steps:
+      - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
 
-      - name: Display artifact structure
-        run: |
-          ls -R release-artifacts/
-
-      - name: Get version from tag or input
-        id: get_version
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Release version: $VERSION"
-
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          cat << EOF > release_notes.md
-          ## Awery ${{ steps.get_version.outputs.VERSION }}
-          
-          ### 📦 Available Downloads
-          
-          #### Android
-          - **Release APK**: Standard release build
-          - **Architecture-specific APKs**: Optimized for specific architectures (if available)
-          
-          #### Desktop
-          - **Windows**: .exe installer and .msi package
-          - **Linux**: .deb, .rpm packages and .tar.gz archive
-          - **macOS**: .dmg disk image and .pkg installer
-          
-          ### 📋 Installation Instructions
-          
-          **Android**: 
-          - Download and install the release APK for your device
-          - Check for architecture-specific APKs for optimized builds
-          
-          **Desktop**: 
-          - Windows: Run the .exe installer or use the .msi package
-          - Linux: Install the .deb (Debian/Ubuntu) or .rpm (RedHat/Fedora) package
-          - macOS: Open the .dmg file and drag to Applications, or use the .pkg installer
-          
-          ### 🔍 What's Changed
-          
-          See the commit history for detailed changes since the last release.
-          
-          ### ⚠️ Notes
-          
-          - Android APKs are unsigned unless configured with signing keys
-          - Desktop builds are not code-signed
-          - Always verify checksums before installation
-          - Report any issues on the GitHub repository
-          EOF
-          cat release_notes.md
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-        with:
-          name: Awery ${{ steps.get_version.outputs.VERSION }}
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'alpha') || contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'dev') }}
-          files: |
-            release-artifacts/android-artifacts/*
-            release-artifacts/desktop-linux-artifacts/*
-            release-artifacts/desktop-windows-artifacts/*
-            release-artifacts/desktop-macos-artifacts/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate checksums
+      - name: Create checksums
         run: |
           cd release-artifacts
-          find . -type f \( -name "*.apk" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg" -o -name "*.tar.gz" -o -name "*.AppImage" -o -name "*.jar" \) -exec sha256sum {} \; > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          find . -type f -exec sha256sum {} \; > SHA256SUMS.txt
 
-      - name: Upload checksums to release
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          files: release-artifacts/SHA256SUMS.txt
+          tag_name: ${{ env.VERSION }}
+          name: Awery ${{ env.VERSION }}
+          files: |
+            release-artifacts/**/*
+            release-artifacts/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
