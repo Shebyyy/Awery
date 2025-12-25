@@ -143,11 +143,6 @@ android {
 
             signingConfig = signingConfigs.getByName("release")
 
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-            enableV4Signing = false
-
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
