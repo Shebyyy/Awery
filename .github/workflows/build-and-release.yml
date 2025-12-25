@@ -430,4 +430,4 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
           files: release-artifacts/SHA256SUMS.txt
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
