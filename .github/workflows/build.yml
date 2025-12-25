@@ -5,9 +5,216 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: ''
 
 jobs:
-  build:
+  build-android:
+    name: Build Android APKs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Android Release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Build Android Universal APK
+        run: ./gradlew :app:assembleUniversalRelease --stacktrace
+        continue-on-error: true
+
+      - name: Build Android Split APKs
+        run: ./gradlew :app:bundleRelease --stacktrace
+        continue-on-error: true
+
+      - name: Sign APKs (if keystore available)
+        if: ${{ secrets.KEYSTORE_FILE != '' }}
+        run: |
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
+          ./gradlew :app:assembleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/keystore.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+        continue-on-error: true
+
+      - name: Collect Android artifacts
+        run: |
+          mkdir -p android-artifacts
+          find app/build/outputs/apk -name "*.apk" -type f -exec cp {} android-artifacts/ \;
+          find app/build/outputs/bundle -name "*.aab" -type f -exec cp {} android-artifacts/ \;
+          ls -lah android-artifacts/
+
+      - name: Rename APKs with version
+        run: |
+          cd android-artifacts
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="dev-$(date +%Y%m%d)"
+          fi
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              mv "$file" "Awery-${VERSION}-${file}"
+            fi
+          done
+          ls -lah
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: android-artifacts/
+          retention-days: 7
+
+  build-desktop-linux:
+    name: Build Desktop (Linux)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Desktop Linux
+        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
+
+      - name: Create Linux package variants
+        run: |
+          ./gradlew :app:packageDeb --stacktrace || echo "Deb packaging not available"
+          ./gradlew :app:packageRpm --stacktrace || echo "RPM packaging not available"
+        continue-on-error: true
+
+      - name: Collect Linux artifacts
+        run: |
+          mkdir -p desktop-linux-artifacts
+          find app/build/compose/binaries -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.tar.gz" \) -exec cp {} desktop-linux-artifacts/ \;
+          find app/build/compose/jars -name "*.jar" -type f -exec cp {} desktop-linux-artifacts/ \;
+          ls -lah desktop-linux-artifacts/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-artifacts
+          path: desktop-linux-artifacts/
+          retention-days: 7
+
+  build-desktop-windows:
+    name: Build Desktop (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Build Desktop Windows
+        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
+        shell: bash
+
+      - name: Create Windows installer
+        run: ./gradlew :app:packageMsi --stacktrace || echo "MSI packaging not available"
+        shell: bash
+        continue-on-error: true
+
+      - name: Collect Windows artifacts
+        run: |
+          mkdir -p desktop-windows-artifacts
+          Get-ChildItem -Path app/build/compose/binaries -Recurse -Include *.exe,*.msi,*.zip | Copy-Item -Destination desktop-windows-artifacts/
+          Get-ChildItem desktop-windows-artifacts/
+        shell: powershell
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-artifacts
+          path: desktop-windows-artifacts/
+          retention-days: 7
+
+  build-desktop-macos:
+    name: Build Desktop (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Desktop macOS
+        run: ./gradlew :app:packageDistributionForCurrentOS --stacktrace
+
+      - name: Create macOS DMG
+        run: ./gradlew :app:packageDmg --stacktrace || echo "DMG packaging not available"
+        continue-on-error: true
+
+      - name: Collect macOS artifacts
+        run: |
+          mkdir -p desktop-macos-artifacts
+          find app/build/compose/binaries -type f \( -name "*.dmg" -o -name "*.pkg" \) -exec cp {} desktop-macos-artifacts/ \;
+          ls -lah desktop-macos-artifacts/
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-artifacts
+          path: desktop-macos-artifacts/
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-android, build-desktop-linux, build-desktop-windows, build-desktop-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,68 +222,92 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          path: release-artifacts
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build Android Release APK
-        run: ./gradlew assembleRelease
-
-      - name: Build Android Universal APK
-        run: ./gradlew assembleUniversalRelease
-
-      - name: Build Android Split APKs
-        run: ./gradlew assembleReleaseAbi
-
-      - name: Build Desktop Linux
-        run: ./gradlew createDistributableForLinux
-
-      - name: Build Desktop Windows
-        run: ./gradlew createDistributableForWindows
-
-      - name: Build Desktop macOS
-        run: ./gradlew createDistributableForMacos
-
-      - name: Collect Android artifacts
+      - name: Display artifact structure
         run: |
-          mkdir -p android-artifacts
-          find app/build/outputs/apk -name "*.apk" -type f -exec cp {} android-artifacts/ \;
-          ls -la android-artifacts/
+          ls -R release-artifacts/
 
-      - name: Collect Desktop artifacts
-        run: |
-          mkdir -p desktop-artifacts
-          find app/build/compose/binaries -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" \) -exec cp {} desktop-artifacts/ \;
-          ls -la desktop-artifacts/
-
-      - name: Get version from tag
+      - name: Get version from tag or input
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          ## Awery ${{ steps.get_version.outputs.VERSION }}
+          
+          ### 📦 Available Downloads
+          
+          #### Android
+          - **Universal APK**: Compatible with all Android devices
+          - **Split APKs**: Optimized for specific architectures
+          - **AAB**: For Google Play Store distribution
+          
+          #### Desktop
+          - **Windows**: .exe, .msi installers
+          - **Linux**: .deb, .rpm, .tar.gz packages
+          - **macOS**: .dmg, .pkg installers
+          
+          ### 📋 Installation Instructions
+          
+          **Android**: Download and install the universal APK, or use split APKs for smaller downloads.
+          
+          **Desktop**: Choose the appropriate package for your operating system.
+          
+          ### 🔍 What's Changed
+          
+          See the commit history for detailed changes.
+          
+          ### ⚠️ Notes
+          
+          - Android APKs are unsigned unless configured with signing keys
+          - Desktop builds are not code-signed
+          - Verify checksums before installation
+          EOF
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          name: Release ${{ steps.get_version.outputs.VERSION }}
+          name: Awery ${{ steps.get_version.outputs.VERSION }}
           tag_name: ${{ steps.get_version.outputs.VERSION }}
+          body_path: release_notes.md
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'alpha') || contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'dev') }}
           files: |
-            android-artifacts/*
-            desktop-artifacts/*
+            release-artifacts/android-artifacts/*
+            release-artifacts/desktop-linux-artifacts/*
+            release-artifacts/desktop-windows-artifacts/*
+            release-artifacts/desktop-macos-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          find . -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) -exec sha256sum {} \; > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload checksums
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          files: release-artifacts/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
