@@ -38,8 +38,9 @@ jobs:
 
       - name: Decode keystore
         run: |
-          printf "%s" "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+          printf "%s" "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > keystore.jks
           ls -lah keystore.jks
+
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
@@ -47,16 +48,18 @@ jobs:
       - name: Build signed APK
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/keystore.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ./gradlew :app:assembleRelease --stacktrace
+
 
       - name: Verify APK signature
         run: |
           $ANDROID_HOME/build-tools/*/apksigner verify \
             app/build/outputs/apk/release/*.apk
+
 
       - name: Collect & rename APKs
         run: |
