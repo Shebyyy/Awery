@@ -18,7 +18,7 @@ fun getLocales(): Collection<String> {
     ).list()!!
         .filter { it.startsWith("values") }
         .map {
-            if(it == "values") "en"
+            if (it == "values") "en"
             else it.substringAfter("values-")
         }
 }
@@ -49,8 +49,6 @@ kotlin {
                 implementation(libs.filekit.coil)
                 implementation(composeLibs.coil.compose)
 
-                // IDK why, but gradle don't want to sync
-                // if these projects aren't used here ._.
                 implementation(projects.data)
                 implementation(projects.resources)
                 implementation(projects.extension.sdk)
@@ -73,21 +71,16 @@ kotlin {
                 implementation(composeLibs.jewel.standalone)
                 implementation(composeLibs.jewel.window)
                 implementation(libs.kotlinx.coroutines.desktop)
-                
-                implementation(composeLibs.desktop.get().let { 
+
+                implementation(composeLibs.desktop.get().let {
                     "${it.group}:${it.name}:${it.version}"
                 }) {
                     exclude(group = "org.jetbrains.compose.material")
                 }
 
-                // Native dialogs
                 implementation("com.github.milchreis:uibooster:1.21.1")
                 implementation("com.formdev:flatlaf-intellij-themes:3.6")
-                
-                // Just let's fix it. This is very fucked up.
-//                runtimeOnly("org.jetbrains.compose.ui:ui-util-desktop:1.10.0-alpha01")
 
-                // For some fucking reason skiko isn't loaded by default
                 val osName = System.getProperty("os.name")
                 val osArch = System.getProperty("os.arch")
 
@@ -95,15 +88,15 @@ kotlin {
                     osName == "Mac OS X" -> "macos"
                     osName.startsWith("Win") -> "windows"
                     osName.startsWith("Linux") -> "linux"
-                    else -> throw UnsupportedOperationException("Unsupported platform $osName!")
+                    else -> error("Unsupported OS $osName")
                 }
 
-                val targetArch = when(osArch) {
+                val targetArch = when (osArch) {
                     "x86_64", "amd64" -> "x64"
                     "aarch64" -> "arm64"
-                    else -> throw UnsupportedOperationException("Unsupported cpu acrhitecture $osArch!")
+                    else -> error("Unsupported arch $osArch")
                 }
-                
+
                 runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-$targetOs-$targetArch:0.9.27")
             }
         }
@@ -121,6 +114,18 @@ android {
         minSdk = property("awery.sdk.min").toString().toInt()
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_FILE")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
@@ -135,7 +140,18 @@ android {
             manifestPlaceholders["APP_NAME"] = "Awery"
             isMinifyEnabled = false
             isShrinkResources = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            signingConfig = signingConfigs.getByName("release")
+
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = false
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -148,8 +164,6 @@ android {
         shaders = false
         viewBinding = false
         compose = true
-
-        // Used to check whatever we are in the debug build or not
         buildConfig = true
     }
 
@@ -169,59 +183,27 @@ enum class DesktopTarget(
     val arch: String,
     val targetFormat: TargetFormat
 ) {
-//    WINDOWS_AARCH64(
-//        os = "windows",
-//        arch = "aarch64",
-//        targetFormat = TargetFormat.Exe
-//    ),
-    
-    WINDOWS_X64(
-        os = "windows",
-        arch = "x64",
-        targetFormat = TargetFormat.Exe
-    ),
-
-//    WINDOWS_X86(
-//        os = "windows",
-//        arch = "x86",
-//        targetFormat = TargetFormat.Exe
-//    ),
-//    
-//    LINUX_AARCH64(
-//        os = "linux",
-//        arch = "aarch64",
-//        targetFormat = TargetFormat.Deb
-//    ),
-//
-    LINUX_X64(
-        os = "linux",
-        arch = "x64",
-        targetFormat = TargetFormat.Deb
-    )
+    WINDOWS_X64("windows", "x64", TargetFormat.Exe),
+    LINUX_X64("linux", "x64", TargetFormat.Deb)
 }
 
 DesktopTarget.values().map { target ->
-    target to tasks.register(listOf("download", target.os, target.arch, "jre").joinToCamelCase()) {
+    target to tasks.register(
+        listOf("download", target.os, target.arch, "jre").joinToCamelCase()
+    ) {
         val version = property("awery.jre.version").toString()
         val variant = property("awery.jre.variant").toString()
-        
+
         inputs.property("jreVersion", version)
         inputs.property("jreVariant", variant)
-        
-        doLast {
-            val url = buildString { 
-                
-            }
-            
-            // TODO: Download jre at build time and cache it for each target
-        }
+
+        doLast { }
     }
 }
 
 compose.desktop {
     application {
         mainClass = "com.mrboomdev.awery.app.MainKt"
-//        javaHome = rootProject.layout.projectDirectory.dir("jre/windows-x64").asFile.absolutePath
 
         nativeDistributions {
             targetFormats = DesktopTarget.values().map { it.targetFormat }.toSet()
@@ -236,35 +218,6 @@ compose.desktop {
                 menuGroup = "Awery"
                 perUserInstall = true
             }
-
-            // This block finds each packaging task (packageMsi, packageDmg, etc.)
-            // and configures it to depend on and use the correct JBR.
-//            tasks.withType<AbstractJPackageTask>().configureEach {
-//                javaHome = when(targetFormat) {
-//					else -> ""
-//				}
-//                
-//                val task = this
-//                
-//                DesktopTarget.values().find {
-//                    it.targetFormat.name.equals(task.targetFormat.name, ignoreCase = true) 
-//                }?.let { config ->
-//                    val jbrTargetDir = layout.buildDirectory.file("jbr/${config.os}-${config.arch}").get().asFile
-//                    val setupTaskName = "setupJbr_${config.os}_${config.arch}"
-//                    println("Configuring task ${task.name} to use JBR from ${jbrTargetDir.path}")
-//
-//                    // Set the correct javaHome path for this specific task
-//                    val macOsHome = jbrTargetDir.resolve("jbr_home/Contents/Home")
-//                    val otherHome = jbrTargetDir.resolve("jbr_home")
-//                    
-//                    task.javaHome = (if(config.os == "osx" && macOsHome.exists()) {
-//                        macOsHome
-//                    } else otherHome).absolutePath
-//
-//                    // Make this packaging task depend on its specific download task
-//                    task.dependsOn(/*setupTaskName*/ "downloadJbr")
-//                }
-//            }
         }
     }
 }
@@ -274,7 +227,6 @@ tasks.register("generateAndroidLocaleConfig") {
     val outputFile = outputDir.file("awery_generated_locales_config.xml")
     val locales = getLocales()
 
-    // For task caching
     inputs.property("locales", locales)
     outputs.file(outputFile)
 
@@ -283,11 +235,7 @@ tasks.register("generateAndroidLocaleConfig") {
         outputFile.asFile.writeText(buildString {
             appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
             appendLine("""<locale-config xmlns:android="http://schemas.android.com/apk/res/android">""")
-
-            for(locale in locales) {
-                appendLine("""    <locale android:name="$locale" />""")
-            }
-
+            locales.forEach { appendLine("""    <locale android:name="$it" />""") }
             appendLine("""</locale-config>""")
         })
     }
