@@ -71,8 +71,8 @@ jobs:
           echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "VERSION_NAME=$(grep awery.app.versionName gradle.properties | cut -d= -f2)" >> $GITHUB_ENV
 
-      - name: Build Windows EXE/MSI
-        run: ./gradlew :app:packageExe :app:packageMsi --stacktrace
+      - name: Build Windows EXE
+        run: ./gradlew :app:packageExe --stacktrace
 
       - name: Collect artifacts
         shell: bash
@@ -80,8 +80,6 @@ jobs:
           mkdir -p desktop-windows
           cp app/build/compose/binaries/main/exe/*.exe \
              desktop-windows/Awery-${VERSION_NAME}-${COMMIT_HASH}-windows.exe
-          cp app/build/compose/binaries/main/msi/*.msi \
-             desktop-windows/Awery-${VERSION_NAME}-${COMMIT_HASH}-windows.msi
           sha256sum desktop-windows/* > desktop-windows/checksums.txt
 
       - name: Upload Windows artifacts
@@ -166,7 +164,6 @@ jobs:
 
             **Windows**
             - Portable `.exe`
-            - Installer `.msi`
 
             **Linux**
             - `.deb` package
