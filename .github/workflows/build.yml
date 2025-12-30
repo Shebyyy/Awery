@@ -1,291 +1,87 @@
-name: Build APKs
+name: Build APK
 
 on:
+  push:
+    branches:
+      - master
+      - develop
+      - main
+  pull_request:
+    branches:
+      - master
+      - develop
+      - main
   workflow_dispatch:
-    inputs:
-      channel:
-        description: "Release channel"
-        required: true
-        default: "beta"
-        type: choice
-        options:
-          - alpha
-          - beta
-          - stable
-      build_universal:
-        description: "Build universal APK"
-        required: true
-        default: true
-        type: boolean
-      build_splits:
-        description: "Build split APKs"
-        required: true
-        default: true
-        type: boolean
-      build_mobile:
-        description: "Build mobile variant"
-        required: true
-        default: true
-        type: boolean
-      build_tv:
-        description: "Build TV variant"
-        required: true
-        default: true
-        type: boolean
-  workflow_call:
-    inputs:
-      channel:
-        description: "Release channel"
-        required: true
-        type: string
-      build_universal:
-        description: "Build universal APK"
-        required: false
-        default: true
-        type: boolean
-      build_splits:
-        description: "Build split APKs"
-        required: false
-        default: true
-        type: boolean
-      build_mobile:
-        description: "Build mobile variant"
-        required: false
-        default: true
-        type: boolean
-      build_tv:
-        description: "Build TV variant"
-        required: false
-        default: true
-        type: boolean
-
-env:
-  JAVA_VERSION: '17'
-  BUILD_TOOLS_VERSION: '34.0.0'
 
 jobs:
-  build-android:
+  build:
+    name: Build APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup JDK ${{ env.JAVA_VERSION }}
+      
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
+          java-version: '17'
           distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-
+          cache: 'gradle'
+      
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
-      - name: Get version info
-        id: version
-        run: |
-          VERSION_NAME=$(grep 'awery.app.versionName' gradle.properties | cut -d'=' -f2)
-          VERSION_CODE=$(grep 'awery.app.versionCode' gradle.properties | cut -d'=' -f2)
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "full_version=$VERSION_NAME-$COMMIT_SHA" >> $GITHUB_OUTPUT
-
-      - name: Build Mobile Universal APK
-        if: ${{ inputs.build_mobile && inputs.build_universal }}
-        run: |
-          ./gradlew assemble${{ inputs.channel }}MobileRelease \
-            -Pbuildkonfig.flavor=${{ inputs.channel }} \
-            -Pandroid.bundle.enableUncompressedNativeLibs=false
-
-      - name: Build Mobile Split APKs
-        if: ${{ inputs.build_mobile && inputs.build_splits }}
-        run: |
-          ./gradlew assemble${{ inputs.channel }}MobileRelease \
-            -Pbuildkonfig.flavor=${{ inputs.channel }} \
-            -Pandroid.split.enable=true \
-            -Pandroid.split.abi.enable=true \
-            -Pandroid.split.abi.isUniversal=false
-
-      - name: Build TV Universal APK
-        if: ${{ inputs.build_tv && inputs.build_universal }}
-        run: |
-          ./gradlew assemble${{ inputs.channel }}TvRelease \
-            -Pbuildkonfig.flavor=${{ inputs.channel }} \
-            -Pandroid.bundle.enableUncompressedNativeLibs=false
-
-      - name: Build TV Split APKs
-        if: ${{ inputs.build_tv && inputs.build_splits }}
-        run: |
-          ./gradlew assemble${{ inputs.channel }}TvRelease \
-            -Pbuildkonfig.flavor=${{ inputs.channel }} \
-            -Pandroid.split.enable=true \
-            -Pandroid.split.abi.enable=true \
-            -Pandroid.split.abi.isUniversal=false
-
-      - name: Sign Mobile APKs
-        if: ${{ inputs.build_mobile && success() }}
-        uses: r0adkll/sign-android-release@v1
+      
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v2
+      
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
         with:
-          releaseDirectory: app/build/outputs/apk/${{ inputs.channel }}Mobile/release
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION }}
-
-      - name: Sign TV APKs
-        if: ${{ inputs.build_tv && success() }}
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/${{ inputs.channel }}Tv/release
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION }}
-
-      - name: Rename and organize APKs
-        run: |
-          mkdir -p release/apks
-          
-          # Mobile Universal APK
-          if [ -f "app/build/outputs/apk/${{ inputs.channel }}Mobile/release/app-${{ inputs.channel }}-mobile-release-signed.apk" ]; then
-            cp "app/build/outputs/apk/${{ inputs.channel }}Mobile/release/app-${{ inputs.channel }}-mobile-release-signed.apk" \
-               "release/apks/awery-mobile-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk"
-          fi
-          
-          # TV Universal APK
-          if [ -f "app/build/outputs/apk/${{ inputs.channel }}Tv/release/app-${{ inputs.channel }}-tv-release-signed.apk" ]; then
-            cp "app/build/outputs/apk/${{ inputs.channel }}Tv/release/app-${{ inputs.channel }}-tv-release-signed.apk" \
-               "release/apks/awery-tv-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk"
-          fi
-          
-          # Mobile Split APKs
-          if [ -d "app/build/outputs/apk/${{ inputs.channel }}Mobile/release" ]; then
-            mkdir -p "release/apks/mobile-splits"
-            find "app/build/outputs/apk/${{ inputs.channel }}Mobile/release" -name "*-signed.apk" -not -name "*mobile-release-signed.apk" | while read apk; do
-              basename=$(basename "$apk" .apk)
-              new_name="awery-mobile-${{ inputs.channel }}-${basename}-${{ steps.version.outputs.full_version }}.apk"
-              cp "$apk" "release/apks/mobile-splits/$new_name"
-            done
-          fi
-          
-          # TV Split APKs
-          if [ -d "app/build/outputs/apk/${{ inputs.channel }}Tv/release" ]; then
-            mkdir -p "release/apks/tv-splits"
-            find "app/build/outputs/apk/${{ inputs.channel }}Tv/release" -name "*-signed.apk" -not -name "*tv-release-signed.apk" | while read apk; do
-              basename=$(basename "$apk" .apk)
-              new_name="awery-tv-${{ inputs.channel }}-${basename}-${{ steps.version.outputs.full_version }}.apk"
-              cp "$apk" "release/apks/tv-splits/$new_name"
-            done
-          fi
-
-      - name: Generate APK checksums
-        run: |
-          cd release/apks
-          find . -name "*.apk" -type f -exec sha256sum {} + | tee checksums.txt
-          
-          # Create individual checksum files for each APK
-          find . -name "*.apk" -type f | while read apk; do
-            sha256sum "$apk" > "${apk}.sha256"
-          done
-
-      - name: Upload Mobile Universal APK
-        if: ${{ inputs.build_mobile && inputs.build_universal }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobile-universal-apk
-          retention-days: 30
           path: |
-            release/apks/awery-mobile-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk
-            release/apks/awery-mobile-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk.sha256
-
-      - name: Upload TV Universal APK
-        if: ${{ inputs.build_tv && inputs.build_universal }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: tv-universal-apk
-          retention-days: 30
-          path: |
-            release/apks/awery-tv-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk
-            release/apks/awery-tv-${{ inputs.channel }}-universal-${{ steps.version.outputs.full_version }}.apk.sha256
-
-      - name: Upload Mobile Split APKs
-        if: ${{ inputs.build_mobile && inputs.build_splits }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobile-split-apks
-          retention-days: 30
-          path: |
-            release/apks/mobile-splits/
-            !release/apks/mobile-splits/*.sha256
-
-      - name: Upload TV Split APKs
-        if: ${{ inputs.build_tv && inputs.build_splits }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: tv-split-apks
-          retention-days: 30
-          path: |
-            release/apks/tv-splits/
-            !release/apks/tv-splits/*.sha256
-
-      - name: Upload Checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: checksums
-          retention-days: 30
-          path: release/apks/checksums.txt
-
-      - name: Upload all APKs as single artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: all-apks
-          retention-days: 30
-          path: release/apks/
-
-      - name: Build Summary
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+      
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+      
+      - name: List build outputs
         run: |
-          echo "## 📱 APK Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Channel:** ${{ inputs.channel }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.full_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ steps.version.outputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          echo "### 📦 Built Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ inputs.build_mobile }}" = "true" ]; then
-            echo "#### 📱 Mobile" >> $GITHUB_STEP_SUMMARY
-            if [ "${{ inputs.build_universal }}" = "true" ]; then
-              echo "- ✅ Universal APK" >> $GITHUB_STEP_SUMMARY
-            fi
-            if [ "${{ inputs.build_splits }}" = "true" ]; then
-              echo "- ✅ Split APKs (ARM variants)" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ "${{ inputs.build_tv }}" = "true" ]; then
-            echo "#### 📺 TV" >> $GITHUB_STEP_SUMMARY
-            if [ "${{ inputs.build_universal }}" = "true" ]; then
-              echo "- ✅ Universal APK" >> $GITHUB_STEP_SUMMARY
-            fi
-            if [ "${{ inputs.build_splits }}" = "true" ]; then
-              echo "- ✅ Split APKs (ARM variants)" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "### 🔐 Signed" >> $GITHUB_STEP_SUMMARY
-          echo "All APKs are signed with release keys." >> $GITHUB_STEP_SUMMARY
+          echo "Build outputs:"
+          find app/build/outputs/apk -type f -name "*.apk"
+      
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+      
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
+      
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+        continue-on-error: true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/**
+          retention-days: 7
