@@ -78,9 +78,6 @@ jobs:
             -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
             --stacktrace
       
-      - name: Build Release APK (Unsigned)
-        run: ./gradlew assembleRelease --stacktrace
-      
       - name: Get version name
         id: get_version
         run: |
