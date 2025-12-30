@@ -1,21 +1,32 @@
-name: Build APK
+name: Release Build
 
 on:
   push:
-    branches:
-      - master
-      - develop
-      - main
-  pull_request:
-    branches:
-      - master
-      - develop
-      - main
+    tags:
+      - 'v*.*.*'
+      - 'release-*'
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_notes:
+        description: 'Release notes'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
-  build:
-    name: Build APK
+  build-release:
+    name: Build Release APK
     runs-on: ubuntu-latest
     
     steps:
@@ -36,6 +47,7 @@ jobs:
       
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v2
+        continue-on-error: true
       
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
@@ -47,41 +59,153 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
       
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Decode Keystore
+        if: ${{ secrets.KEYSTORE_FILE != '' }}
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+        run: |
+          echo "$KEYSTORE_FILE" | base64 --decode > $GITHUB_WORKSPACE/keystore.jks
       
-      - name: Build Release APK
+      - name: Build Release APK (Signed)
+        if: ${{ secrets.KEYSTORE_FILE != '' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            --stacktrace
+      
+      - name: Build Release APK (Unsigned)
+        if: ${{ secrets.KEYSTORE_FILE == '' }}
         run: ./gradlew assembleRelease --stacktrace
       
-      - name: List build outputs
+      - name: Build Release AAB (Signed)
+        if: ${{ secrets.KEYSTORE_FILE != '' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "Build outputs:"
-          find app/build/outputs/apk -type f -name "*.apk"
-      
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 7
-      
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 7
-      
-      - name: Run unit tests
-        run: ./gradlew test --stacktrace
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            --stacktrace
         continue-on-error: true
       
-      - name: Upload test results
-        if: always()
+      - name: Get version name
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Rename APK files
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          mkdir -p release-files
+          
+          # Find and rename APK files
+          for apk in app/build/outputs/apk/release/*.apk; do
+            if [ -f "$apk" ]; then
+              base_name=$(basename "$apk" .apk)
+              mv "$apk" "release-files/Awery-${VERSION}-${base_name}.apk"
+            fi
+          done
+          
+          # Find and rename AAB files if they exist
+          for aab in app/build/outputs/bundle/release/*.aab; do
+            if [ -f "$aab" ]; then
+              base_name=$(basename "$aab" .aab)
+              mv "$aab" "release-files/Awery-${VERSION}-${base_name}.aab"
+            fi
+          done
+          
+          echo "Release files:"
+          ls -lh release-files/
+      
+      - name: Generate checksums
+        run: |
+          cd release-files
+          sha256sum * > checksums.txt
+          cat checksums.txt
+      
+      - name: Upload Release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: |
-            **/build/test-results/**/*.xml
-            **/build/reports/tests/**
-          retention-days: 7
+          name: release-artifacts
+          path: release-files/
+          retention-days: 30
+      
+      - name: Create Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-files/*
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          generate_release_notes: true
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Awery Release ${{ steps.get_version.outputs.VERSION }}
+            
+            ### Downloads
+            - **APK (Release)**: Install this on your Android device
+            - **AAB (Release)**: For Google Play Store distribution
+            
+            ### Checksums
+            See `checksums.txt` for file verification
+            
+            ### Installation
+            1. Download the APK file
+            2. Enable installation from unknown sources in your device settings
+            3. Install the APK
+            
+            **Note**: This is a release build. Make sure to backup your data before updating.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create Manual Release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-files/*
+          draft: true
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          tag_name: ${{ github.event.inputs.version_name }}
+          name: Release ${{ github.event.inputs.version_name }}
+          body: |
+            ## Awery Release ${{ github.event.inputs.version_name }}
+            
+            ${{ github.event.inputs.release_notes }}
+            
+            ### Downloads
+            - **APK (Release)**: Install this on your Android device
+            - **AAB (Release)**: For Google Play Store distribution
+            
+            ### Checksums
+            See `checksums.txt` for file verification
+            
+            ### Installation
+            1. Download the APK file
+            2. Enable installation from unknown sources in your device settings
+            3. Install the APK
+            
+            **Note**: This is a manually created release. Make sure to backup your data before updating.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/keystore.jks" ]; then
+            rm -f $GITHUB_WORKSPACE/keystore.jks
+          fi
