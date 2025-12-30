@@ -48,17 +48,19 @@ jobs:
       - name: Download JetBrains Runtime (Windows)
         shell: bash
         run: |
-          JBR_FILE=jbr_jcef-21.0.9-windows-x64-b895.149.zip
-          JBR_URL=https://github.com/JetBrains/JetBrainsRuntime/releases/download/jbr-release-21.0.9b895.149/$JBR_FILE
+          JBR_VERSION="21.0.9"
+          JBR_BUILD="b895.149"
+          JBR_NAME="jbr_jcef-${JBR_VERSION}-windows-x64-${JBR_BUILD}"
+          JBR_ARCHIVE="${JBR_NAME}.zip"
+          JBR_URL="https://github.com/JetBrains/JetBrainsRuntime/releases/download/jbr-release-${JBR_VERSION}${JBR_BUILD}/${JBR_ARCHIVE}"
       
-          curl -fL -o $JBR_FILE "$JBR_URL"
+          echo "Downloading $JBR_URL"
+          curl -fL "$JBR_URL" -o "$JBR_ARCHIVE"
       
-          unzip -q $JBR_FILE
+          unzip -q "$JBR_ARCHIVE"
       
-          JBR_DIR=$(ls -d jbr_jcef-21.0.9-windows-x64-b895.149)
-          echo "JBR_HOME=$PWD/$JBR_DIR" >> $GITHUB_ENV
-      
-          echo "Using JBR at $JBR_DIR"
+          echo "JBR_HOME=$PWD/$JBR_NAME" >> "$GITHUB_ENV"
+
 
       - name: Get version info
         shell: bash
