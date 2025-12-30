@@ -60,18 +60,16 @@ jobs:
             ${{ runner.os }}-gradle-
       
       - name: Decode Keystore
-        if: ${{ secrets.KEYSTORE_FILE != '' }}
         env:
-          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KEYSTORE_FILE: ${{ secrets.ANDROID_SIGNING_KEY }}
         run: |
           echo "$KEYSTORE_FILE" | base64 --decode > $GITHUB_WORKSPACE/keystore.jks
       
       - name: Build Release APK (Signed)
-        if: ${{ secrets.KEYSTORE_FILE != '' }}
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
@@ -81,23 +79,7 @@ jobs:
             --stacktrace
       
       - name: Build Release APK (Unsigned)
-        if: ${{ secrets.KEYSTORE_FILE == '' }}
         run: ./gradlew assembleRelease --stacktrace
-      
-      - name: Build Release AAB (Signed)
-        if: ${{ secrets.KEYSTORE_FILE != '' }}
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          ./gradlew bundleRelease \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
-            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
-            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
-            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
-            --stacktrace
-        continue-on-error: true
       
       - name: Get version name
         id: get_version
