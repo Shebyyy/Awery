@@ -12,10 +12,12 @@ plugins {
     alias(androidLibs.plugins.app)
 }
 
+/* ========================= LOCALES ========================= */
+
 fun getLocales(): Collection<String> {
-    return rootProject.projectDir.resolve(
-        "resources/src/commonMain/composeResources"
-    ).list()!!
+    return rootProject.projectDir
+        .resolve("resources/src/commonMain/composeResources")
+        .list()!!
         .filter { it.startsWith("values") }
         .map {
             if (it == "values") "en"
@@ -23,8 +25,13 @@ fun getLocales(): Collection<String> {
         }
 }
 
+/* ========================= KOTLIN ========================= */
+
 kotlin {
-    jvmToolchain(properties["awery.java.desktop"].toString().toInt())
+    jvmToolchain(
+        properties["awery.java.desktop"].toString().toInt()
+    )
+
     jvm("desktop")
 
     androidTarget {
@@ -44,18 +51,17 @@ kotlin {
             dependencies {
                 implementation(projects.core)
                 implementation(projects.ui)
+                implementation(projects.data)
+                implementation(projects.resources)
+                implementation(projects.extension.sdk)
                 implementation(projects.extension.loaders)
+                implementation(projects.extension.loaders.androidCompat)
 
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.filekit.core)
                 implementation(libs.filekit.dialogs)
                 implementation(libs.filekit.coil)
                 implementation(composeLibs.coil.compose)
-
-                implementation(projects.data)
-                implementation(projects.resources)
-                implementation(projects.extension.sdk)
-                implementation(projects.extension.loaders.androidCompat)
             }
         }
 
@@ -83,46 +89,29 @@ kotlin {
 
                 implementation("com.github.milchreis:uibooster:1.21.1")
                 implementation("com.formdev:flatlaf-intellij-themes:3.6")
-
-                val osName = System.getProperty("os.name")
-                val osArch = System.getProperty("os.arch")
-
-                val targetOs = when {
-                    osName == "Mac OS X" -> "macos"
-                    osName.startsWith("Win") -> "windows"
-                    osName.startsWith("Linux") -> "linux"
-                    else -> error("Unsupported OS $osName")
-                }
-
-                val targetArch = when (osArch) {
-                    "x86_64", "amd64" -> "x64"
-                    "aarch64" -> "arm64"
-                    else -> error("Unsupported arch $osArch")
-                }
-
-                runtimeOnly(
-                    "org.jetbrains.skiko:skiko-awt-runtime-$targetOs-$targetArch:0.9.27"
-                )
             }
         }
     }
 }
+
+/* ========================= ANDROID ========================= */
 
 android {
     namespace = "com.mrboomdev.awery"
     compileSdk = properties["awery.sdk.target"].toString().toInt()
 
     defaultConfig {
-        versionName = properties["awery.app.versionName"].toString()
-        versionCode = properties["awery.app.versionCode"].toString().toInt()
-        targetSdk = properties["awery.sdk.target"].toString().toInt()
-        minSdk = properties["awery.sdk.min"].toString().toInt()
+        versionName =
+            properties["awery.app.versionName"].toString()
+        versionCode =
+            properties["awery.app.versionCode"].toString().toInt()
+
+        minSdk =
+            properties["awery.sdk.min"].toString().toInt()
+        targetSdk =
+            properties["awery.sdk.target"].toString().toInt()
     }
 
-    /**
-     * REQUIRED FOR CI SIGNING
-     * android.injected.signing.* only overrides an EXISTING signingConfig
-     */
     signingConfigs {
         create("release") {
             val storeFilePath =
@@ -143,38 +132,31 @@ android {
     buildTypes {
         debug {
             isDebuggable = true
-            isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             manifestPlaceholders["APP_NAME"] = "Awery Debug"
         }
 
         release {
-            signingConfig = signingConfigs.getByName("release")
-            versionNameSuffix = "-release"
+            signingConfig =
+                signingConfigs.getByName("release")
             manifestPlaceholders["APP_NAME"] = "Awery"
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
+                getDefaultProguardFile(
+                    "proguard-android-optimize.txt"
+                ),
                 "proguard-rules.pro"
             )
         }
     }
 
     buildFeatures {
-        aidl = false
-        dataBinding = false
-        mlModelBinding = false
-        prefab = false
-        renderScript = false
-        shaders = false
-        viewBinding = false
         compose = true
         buildConfig = true
     }
 
-    @Suppress("UnstableApiUsage")
     androidResources {
         localeFilters += getLocales()
     }
@@ -188,25 +170,10 @@ android {
 /* ========================= DESKTOP ========================= */
 
 enum class DesktopTarget(
-    val os: String,
-    val arch: String,
-    val targetFormat: TargetFormat
+    val format: TargetFormat
 ) {
-    WINDOWS_X64("windows", "x64", TargetFormat.Exe),
-    LINUX_X64("linux", "x64", TargetFormat.Deb)
-}
-
-DesktopTarget.values().map { target ->
-    target to tasks.register(
-        listOf("download", target.os, target.arch, "jre")
-            .joinToCamelCase()
-    ) {
-        val version = properties["awery.jre.version"].toString()
-        val variant = properties["awery.jre.variant"].toString()
-        inputs.property("jreVersion", version)
-        inputs.property("jreVariant", variant)
-        doLast { }
-    }
+    WINDOWS(TargetFormat.Exe),
+    LINUX(TargetFormat.Deb)
 }
 
 compose.desktop {
@@ -214,15 +181,26 @@ compose.desktop {
         mainClass = "com.mrboomdev.awery.app.MainKt"
 
         nativeDistributions {
+            includeAllModules = true
+
+            /**
+             * JBR MUST BE PROVIDED VIA ENV (CI + LOCAL)
+             */
+            javaHome = file(
+                System.getenv("JBR_HOME")
+                    ?: error("JBR_HOME is not set")
+            )
+
             targetFormats =
-                DesktopTarget.values().map { it.targetFormat }.toSet()
+                DesktopTarget.values().map { it.format }.toSet()
+
             packageName = "Awery"
             packageVersion =
                 properties["awery.app.versionName"].toString()
-            includeAllModules = true
 
             windows {
-                iconFile = rootProject.file("app_icon.ico")
+                iconFile =
+                    rootProject.file("app_icon.ico")
                 shortcut = true
                 menu = true
                 menuGroup = "Awery"
@@ -232,10 +210,11 @@ compose.desktop {
     }
 }
 
-/* ========================= LOCALES ========================= */
+/* ========================= ANDROID LOCALES ========================= */
 
 tasks.register("generateAndroidLocaleConfig") {
-    val outputDir = layout.projectDirectory.dir("src/androidMain/res/xml")
+    val outputDir =
+        layout.projectDirectory.dir("src/androidMain/res/xml")
     val outputFile =
         outputDir.file("awery_generated_locales_config.xml")
     val locales = getLocales()
