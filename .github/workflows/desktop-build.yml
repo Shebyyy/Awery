@@ -51,14 +51,14 @@ jobs:
           curl -fL \
             https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk-21.0.9-windows-x64-b895.149.zip \
             -o jbrsdk.zip
-      
-          unzip -q jbr.zip
-      
+          
+          unzip -q jbrsdk.zip
+          
           JBR_DIR="jbrsdk-21.0.9-windows-x64-b895.149"
-      
-          # Convert to Windows path
+          
+          # Convert to Windows path for Gradle
           JBR_HOME_WIN=$(cygpath -w "$PWD/$JBR_DIR")
-      
+          
           echo "JBR_HOME=$JBR_HOME_WIN" >> $GITHUB_ENV
           echo "Using JBR_HOME=$JBR_HOME_WIN"
 
