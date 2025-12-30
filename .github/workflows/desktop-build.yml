@@ -48,21 +48,19 @@ jobs:
       - name: Download JetBrains Runtime (Windows)
         shell: bash
         run: |
-          echo "Downloading JBR for Windows..."
           curl -fL \
             https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.9-windows-x64-b895.149.zip \
             -o jbr.zip
       
-          echo "Unzipping JBR archive..."
           unzip -q jbr.zip
       
-          # The extracted folder will be named like:
-          # jbr_jcef-21.0.9-windows-x64-b895.149
-          JBR_DIR=$(ls -d jbr_jcef-21.0.9-windows-x64-b895.149)
+          JBR_DIR="jbr_jcef-21.0.9-windows-x64-b895.149"
       
-          echo "Setting JBR_HOME to $PWD/$JBR_DIR"
-          echo "JBR_HOME=$PWD/$JBR_DIR" >> $GITHUB_ENV
-
+          # Convert to Windows path
+          JBR_HOME_WIN=$(cygpath -w "$PWD/$JBR_DIR")
+      
+          echo "JBR_HOME=$JBR_HOME_WIN" >> $GITHUB_ENV
+          echo "Using JBR_HOME=$JBR_HOME_WIN"
 
 
       - name: Get version info
