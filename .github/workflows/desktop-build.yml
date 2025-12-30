@@ -12,263 +12,155 @@ on:
         required: false
         default: 'true'
         type: choice
-        options:
-          - 'true'
-          - 'false'
+        options: ['true', 'false']
       build_linux:
         description: 'Build Linux package'
         required: false
         default: 'true'
         type: choice
-        options:
-          - 'true'
-          - 'false'
+        options: ['true', 'false']
+
+env:
+  JBR_VERSION: '21'
+  JBR_BUILD: 'b1000.42'
 
 jobs:
+# ===================== WINDOWS =====================
   build-windows:
     name: Build Windows Desktop
     runs-on: windows-latest
     if: github.event.inputs.build_windows != 'false'
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Set up JDK 21
+
+      - name: Setup JDK (for Gradle)
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: 'gradle'
-      
+          cache: gradle
+
+      # 🔑 DOWNLOAD JBR (REQUIRED FOR JEWEL)
+      - name: Download JetBrains Runtime (Windows)
+        shell: bash
+        run: |
+          JBR_FILE=jbr_jcef-${JBR_VERSION}-windows-x64-${JBR_BUILD}.tar.gz
+          curl -L -o $JBR_FILE \
+            https://cache-redirector.jetbrains.com/intellij-jbr/$JBR_FILE
+          tar -xzf $JBR_FILE
+          echo "JBR_HOME=$PWD/jbr_jcef-${JBR_VERSION}" >> $GITHUB_ENV
+
       - name: Get version info
-        id: version
         shell: bash
         run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          VERSION_NAME=$(grep "awery.app.versionName" gradle.properties | cut -d'=' -f2)
-          echo "VERSION_NAME=${VERSION_NAME}" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_OUTPUT
-      
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.konan
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      
-      - name: Build Windows executable
-        run: ./gradlew :app:packageExe --stacktrace
-      
-      - name: List build outputs
+          echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(grep awery.app.versionName gradle.properties | cut -d= -f2)" >> $GITHUB_ENV
+
+      - name: Build Windows EXE/MSI
+        run: ./gradlew :app:packageExe :app:packageMsi --stacktrace
+
+      - name: Collect artifacts
         shell: bash
         run: |
-          echo "Build outputs:"
-          find app/build/compose/binaries -type f
-      
-      - name: Rename Windows executable
-        shell: bash
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION_NAME }}"
-          COMMIT="${{ steps.version.outputs.COMMIT_HASH }}"
           mkdir -p desktop-windows
-          
-          # Find and copy Windows executable
-          for exe in app/build/compose/binaries/main/exe/*.exe; do
-            if [ -f "$exe" ]; then
-              cp "$exe" "desktop-windows/Awery-${VERSION}-${COMMIT}-windows-x64.exe"
-            fi
-          done
-          
-          # Find and copy installer if exists
-          for msi in app/build/compose/binaries/main/msi/*.msi; do
-            if [ -f "$msi" ]; then
-              cp "$msi" "desktop-windows/Awery-${VERSION}-${COMMIT}-windows-x64-installer.msi"
-            fi
-          done
-          
-          ls -lh desktop-windows/
-      
-      - name: Generate checksums
-        shell: bash
-        run: |
-          cd desktop-windows
-          sha256sum * > checksums-windows.txt || true
-          cat checksums-windows.txt || true
-      
+          cp app/build/compose/binaries/main/exe/*.exe \
+             desktop-windows/Awery-${VERSION_NAME}-${COMMIT_HASH}-windows.exe
+          cp app/build/compose/binaries/main/msi/*.msi \
+             desktop-windows/Awery-${VERSION_NAME}-${COMMIT_HASH}-windows.msi
+          sha256sum desktop-windows/* > desktop-windows/checksums.txt
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows-${{ steps.version.outputs.COMMIT_HASH }}
+          name: desktop-windows-${{ env.COMMIT_HASH }}
           path: desktop-windows/
-          retention-days: 30
 
+# ===================== LINUX =====================
   build-linux:
     name: Build Linux Desktop
     runs-on: ubuntu-latest
     if: github.event.inputs.build_linux != 'false'
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Set up JDK 21
+
+      - name: Setup JDK (for Gradle)
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: 'gradle'
-      
+          cache: gradle
+
+      # 🔑 DOWNLOAD JBR (REQUIRED FOR JEWEL)
+      - name: Download JetBrains Runtime (Linux)
+        run: |
+          JBR_FILE=jbr_jcef-${JBR_VERSION}-linux-x64-${JBR_BUILD}.tar.gz
+          curl -L -o $JBR_FILE \
+            https://cache-redirector.jetbrains.com/intellij-jbr/$JBR_FILE
+          tar -xzf $JBR_FILE
+          echo "JBR_HOME=$PWD/jbr_jcef-${JBR_VERSION}" >> $GITHUB_ENV
+
       - name: Get version info
-        id: version
         run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          VERSION_NAME=$(grep "awery.app.versionName" gradle.properties | cut -d'=' -f2)
-          echo "VERSION_NAME=${VERSION_NAME}" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_OUTPUT
-      
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.konan
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      
-      - name: Build Linux package
+          echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(grep awery.app.versionName gradle.properties | cut -d= -f2)" >> $GITHUB_ENV
+
+      - name: Build Linux DEB
         run: ./gradlew :app:packageDeb --stacktrace
-      
-      - name: List build outputs
+
+      - name: Collect artifacts
         run: |
-          echo "Build outputs:"
-          find app/build/compose/binaries -type f
-      
-      - name: Rename Linux package
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION_NAME }}"
-          COMMIT="${{ steps.version.outputs.COMMIT_HASH }}"
           mkdir -p desktop-linux
-          
-          # Find and copy DEB package
-          for deb in app/build/compose/binaries/main/deb/*.deb; do
-            if [ -f "$deb" ]; then
-              cp "$deb" "desktop-linux/Awery-${VERSION}-${COMMIT}-linux-x64.deb"
-            fi
-          done
-          
-          ls -lh desktop-linux/
-      
-      - name: Generate checksums
-        run: |
-          cd desktop-linux
-          sha256sum * > checksums-linux.txt
-          cat checksums-linux.txt
-      
+          cp app/build/compose/binaries/main/deb/*.deb \
+             desktop-linux/Awery-${VERSION_NAME}-${COMMIT_HASH}-linux.deb
+          sha256sum desktop-linux/* > desktop-linux/checksums.txt
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-linux-${{ steps.version.outputs.COMMIT_HASH }}
+          name: desktop-linux-${{ env.COMMIT_HASH }}
           path: desktop-linux/
-          retention-days: 30
 
+# ===================== RELEASE =====================
   create-release:
     name: Create Desktop Release
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    
+    if: startsWith(github.ref, 'refs/tags/')
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Get version info
-        id: version
-        run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          VERSION_NAME=$(grep "awery.app.versionName" gradle.properties | cut -d'=' -f2)
-          RELEASE_VERSION="${GITHUB_REF#refs/tags/}"
-          echo "VERSION_NAME=${VERSION_NAME}" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_OUTPUT
-          echo "RELEASE_VERSION=${RELEASE_VERSION}" >> $GITHUB_OUTPUT
-      
-      - name: Download Windows artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: desktop-windows-${{ steps.version.outputs.COMMIT_HASH }}
-          path: release-files/
-        continue-on-error: true
-      
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: desktop-linux-${{ steps.version.outputs.COMMIT_HASH }}
-          path: release-files/
-        continue-on-error: true
-      
-      - name: Generate combined checksums
-        run: |
-          cd release-files
-          sha256sum *.exe *.msi *.deb > checksums-all.txt 2>/dev/null || true
-          cat checksums-all.txt || echo "No desktop builds found"
-      
+          path: release-files
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release-files/*
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          name: Desktop Release ${{ steps.version.outputs.RELEASE_VERSION }}
+          files: release-files/**/*
+          name: Desktop Release ${{ github.ref_name }}
           body: |
-            ## 🖥️ Awery Desktop Release ${{ steps.version.outputs.RELEASE_VERSION }}
-            
-            **Version**: ${{ steps.version.outputs.VERSION_NAME }}  
-            **Commit**: ${{ steps.version.outputs.COMMIT_HASH }}
-            
-            ### 📦 Desktop Downloads
-            
-            **Windows:**
-            - `.exe` - Portable executable (no installation required)
-            - `.msi` - Windows installer package
-            
-            **Linux:**
-            - `.deb` - Debian/Ubuntu package
-            
-            ### 🔐 Checksums
-            See `checksums-all.txt` for file verification
-            
-            ### 💾 Installation
-            
-            **Windows:**
-            1. Download the `.exe` or `.msi` file
-            2. Run the file to install/launch Awery
-            3. Windows may show a security warning - click "More info" → "Run anyway"
-            
-            **Linux (Debian/Ubuntu):**
-            ```bash
-            sudo dpkg -i Awery-*.deb
-            sudo apt-get install -f  # Install dependencies if needed
-            ```
-            
-            ### ⚙️ System Requirements
-            - **Windows**: Windows 10/11 (x64)
-            - **Linux**: Ubuntu 20.04+ or equivalent (x64)
-            - **RAM**: 4GB minimum, 8GB recommended
-            - **Java**: Bundled with application
-            
-            **Note**: This is a Kotlin Multiplatform Compose Desktop application.
+            ## 🖥️ Awery Desktop Release
+
+            ✅ **JetBrains Runtime bundled**
+            ✅ Jewel `DecoratedWindow` safe
+            ✅ No external Java required
+
+            **Windows**
+            - Portable `.exe`
+            - Installer `.msi`
+
+            **Linux**
+            - `.deb` package
+
+            **Checksums**
+            Included for verification.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
