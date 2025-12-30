@@ -49,12 +49,12 @@ jobs:
         shell: bash
         run: |
           curl -fL \
-            https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.9-windows-x64-b895.149.zip \
-            -o jbr.zip
+            https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk-21.0.9-windows-x64-b895.149.zip \
+            -o jbrsdk.zip
       
           unzip -q jbr.zip
       
-          JBR_DIR="jbr_jcef-21.0.9-windows-x64-b895.149"
+          JBR_DIR="jbrsdk-21.0.9-windows-x64-b895.149"
       
           # Convert to Windows path
           JBR_HOME_WIN=$(cygpath -w "$PWD/$JBR_DIR")
